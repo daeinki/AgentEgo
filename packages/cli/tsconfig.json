@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../core" },
+    { "path": "../control-plane" },
+    { "path": "../gateway-cli" },
+    { "path": "../tui" },
+    { "path": "../agent-worker" },
+    { "path": "../ego" },
+    { "path": "../skills" }
+  ]
+}

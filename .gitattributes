@@ -1,0 +1,13 @@
+# Force LF line endings everywhere — prevents Windows' core.autocrlf from
+# rewriting files on checkout (which breaks shell scripts executed from WSL
+# and confuses snapshot comparisons).
+* text=auto eol=lf
+
+# Binary assets git should not try to diff.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.db binary

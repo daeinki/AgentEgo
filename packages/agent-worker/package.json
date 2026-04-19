@@ -1,0 +1,27 @@
+{
+  "name": "@agent-platform/agent-worker",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@agent-platform/control-plane": "workspace:*",
+    "@agent-platform/core": "workspace:*",
+    "@agent-platform/skills": "workspace:*",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "openai": "^6.34.0"
+  },
+  "devDependencies": {
+    "@agent-platform/memory": "workspace:*"
+  }
+}

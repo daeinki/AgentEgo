@@ -1,0 +1,31 @@
+{
+  "name": "@agent-platform/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "agent": "dist/program.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/program.ts",
+    "start": "node dist/program.js"
+  },
+  "dependencies": {
+    "@agent-platform/agent-worker": "workspace:*",
+    "@agent-platform/channel-webchat": "workspace:*",
+    "@agent-platform/control-plane": "workspace:*",
+    "@agent-platform/core": "workspace:*",
+    "@agent-platform/ego": "workspace:*",
+    "@agent-platform/gateway-cli": "workspace:*",
+    "@agent-platform/memory": "workspace:*",
+    "@agent-platform/observability": "workspace:*",
+    "@agent-platform/skills": "workspace:*",
+    "@agent-platform/tui": "workspace:*",
+    "commander": "^13.1.0",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.12",
+    "ws": "^8.18.0"
+  }
+}

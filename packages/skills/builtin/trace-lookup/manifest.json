@@ -1,0 +1,10 @@
+{
+  "id": "trace-lookup",
+  "name": "Trace Lookup",
+  "description": "Self-introspection: query the agent's own pipeline trace events (G3/P1/E1/W1/R1-R3/M1 blocks) from <stateDir>/trace/traces.db. Exposes trace.list, trace.show, trace.last. Read-only.",
+  "version": "0.1.0",
+  "author": "agent-platform",
+  "permissions": [],
+  "entryPoint": "index.js",
+  "contentSha256": "63da6fc5a87010260f06084c199ba4990dee7e74d9dca630aa5f69fb0d450d25"
+}

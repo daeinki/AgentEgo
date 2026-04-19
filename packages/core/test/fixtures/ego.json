@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "1.1.0",
+  "state": "active",
+  "fallbackOnError": true,
+  "maxDecisionTimeMs": 3000,
+
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5-20251001",
+    "apiKey": "${ANTHROPIC_API_KEY}",
+    "temperature": 0.1,
+    "maxTokens": 1024,
+    "topP": 0.9,
+    "fallback": {
+      "provider": "openai",
+      "model": "gpt-4.1-mini",
+      "apiKey": "${OPENAI_API_KEY}",
+      "temperature": 0.1,
+      "maxTokens": 1024
+    }
+  },
+
+  "thresholds": {
+    "minConfidenceToAct": 0.6,
+    "minRelevanceToEnrich": 0.3,
+    "minRelevanceToRedirect": 0.5,
+    "minRelevanceToDirectRespond": 0.8,
+    "maxCostUsdPerDecision": 0.05,
+    "maxCostUsdPerDay": 5.0
+  },
+
+  "fastPath": {
+    "passthroughIntents": ["greeting", "command", "reaction"],
+    "passthroughPatterns": [
+      "^/(reset|status|new|compact|help)",
+      "^(hi|hello|hey|안녕|ㅎㅇ|감사|고마워|ㄱㅅ)"
+    ],
+    "maxComplexityForPassthrough": "simple",
+    "targetRatio": 0.75,
+    "measurementWindowDays": 7
+  },
+
+  "prompts": {
+    "systemPromptFile": "~/.agent/ego/system-prompt.md",
+    "responseFormat": "json"
+  },
+
+  "goals": {
+    "enabled": true,
+    "maxActiveGoals": 10,
+    "autoDetectCompletion": true,
+    "storePath": "~/.agent/ego/goals.json"
+  },
+
+  "memory": {
+    "searchOnCognize": true,
+    "maxSearchResults": 5,
+    "searchTimeoutMs": 1500,
+    "onTimeout": "empty_result"
+  },
+
+  "persona": {
+    "enabled": true,
+    "storePath": "~/.agent/ego/persona.json",
+    "snapshot": {
+      "maxTokens": 250,
+      "topRelevantBehaviors": 3,
+      "topRelevantExpertise": 3,
+      "includeRelationshipContext": true
+    }
+  },
+
+  "errorHandling": {
+    "onLlmInvalidJson": "passthrough",
+    "onLlmTimeout": "passthrough",
+    "onLlmOutOfRange": "passthrough",
+    "onConsecutiveFailures": {
+      "threshold": 5,
+      "action": "disable_llm_path",
+      "cooldownMinutes": 15
+    }
+  },
+
+  "audit": {
+    "enabled": true,
+    "logLevel": "decisions",
+    "storePath": "~/.agent/ego/audit.db",
+    "retentionDays": 90
+  }
+}

@@ -1,0 +1,11 @@
+export { setupTelemetry } from './setup.js';
+export type { TelemetryConfig, TelemetryHandle } from './setup.js';
+export { getTracer, withSpan, TRACER_NAME, TRACER_VERSION } from './tracer.js';
+export { InMemoryMetricsSink } from './metrics.js';
+export type { MetricsSink, MetricsSnapshot } from './metrics.js';
+export { createOtlpHttpProcessor } from './otlp.js';
+export type { OtlpProcessorOptions } from './otlp.js';
+export { SqliteTraceLog } from './sqlite-trace-log.js';
+export type { SqliteTraceLogOptions } from './sqlite-trace-log.js';
+export { TraceQuery, openTraceDb } from './trace-query.js';
+export type { TraceSummary } from './trace-query.js';

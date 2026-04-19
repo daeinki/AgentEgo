@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2024"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true
+  },
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/control-plane" },
+    { "path": "packages/gateway-cli" },
+    { "path": "packages/tui" },
+    { "path": "packages/ego" },
+    { "path": "packages/memory" },
+    { "path": "packages/agent-worker" },
+    { "path": "packages/cli" },
+    { "path": "packages/channels/webchat" },
+    { "path": "packages/channels/telegram" },
+    { "path": "packages/channels/slack" },
+    { "path": "packages/channels/discord" },
+    { "path": "packages/channels/whatsapp" },
+    { "path": "packages/observability" },
+    { "path": "packages/skills" },
+    { "path": "packages/message-bus" },
+    { "path": "packages/workflow" },
+    { "path": "packages/device-node" }
+  ]
+}
