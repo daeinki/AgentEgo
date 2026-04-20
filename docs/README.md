@@ -19,6 +19,8 @@
 | [04](tutorials/04-webchat-browser.md) | WebChat Browser | 브라우저에서 WebSocket 으로 스트리밍 대화 | 20분 |
 | [05](tutorials/05-telegram-bot.md) | Telegram Bot | Bot API, 그룹 채팅 라우팅, ownerIds | 15분 |
 | [06](tutorials/06-custom-tool.md) | Custom Tool | AgentTool 작성, InProcessSandbox, 스킬 패키징, Docker 격리 | 20분 |
+| [07](tutorials/07-gateway-tui.md) | Gateway + TUI | 데몬 게이트웨이와 Ink TUI 클라이언트 (ADR-008) | 15분 |
+| [08](tutorials/08-webapp-dashboard.md) | Webapp Dashboard | 브라우저 대시보드 (ADR-010), device-identity 등록, 6개 뷰, phase-line | 20분 |
 
 ## 레퍼런스 (Reference)
 
@@ -29,8 +31,8 @@
 
 ## 개념 이해 (How it works)
 
-- **[architecture.md](architecture.md)** — 14개 패키지 지도·데이터 흐름·EGO 파이프라인·메모리 검색 전략
-- 원본 설계 (한국어): [harness-engineering.md](../../claude/harness-engineering.md), [ego-design.md](../../claude/ego-design.md), [ego-persona.md](../../claude/ego-persona.md)
+- **[architecture.md](architecture.md)** — 패키지 지도·데이터 흐름·EGO 파이프라인·메모리 검색 전략·운영자 서피스(TUI/Webapp)
+- 원본 설계 (한국어): [harness-engineering.md](../../claude/harness-engineering.md), [ego-design.md](../../claude/ego-design.md), [ego-persona.md](../../claude/ego-persona.md), [visualize_architecture.md](../../claude/visualize_architecture.md)
 
 ## 이주 (Migration)
 
@@ -42,6 +44,10 @@
 - [튜토리얼 04 — WebChat](tutorials/04-webchat-browser.md)
 - [튜토리얼 05 — Telegram](tutorials/05-telegram-bot.md)
 - [configuration.md §채널별 설정](configuration.md#채널별-설정) — Slack/Discord/WhatsApp
+
+### "브라우저로 운영/관찰하고 싶어요"
+- [튜토리얼 08 — Webapp Dashboard](tutorials/08-webapp-dashboard.md) — Chat/Overview/Channels/Instances/Sessions/Cron 6개 뷰
+- 기동: `pnpm --filter @agent-platform/webapp dev` (개발) 또는 `agent gateway start --webapp-dir <dist>` (프로덕션)
 
 ### "EGO 를 튜닝하고 싶어요"
 - [튜토리얼 02 §Step 8](tutorials/02-enable-ego.md#step-8-임계값-튜닝) — 임계값
@@ -107,7 +113,8 @@ A. 현재 공식 레지스트리는 없습니다. 직접 작성하거나 [튜토
 
 ## 원본 설계 문서
 
-- [harness-engineering.md](../../claude/harness-engineering.md) — 전체 시스템 설계 (v0.3.0)
+- [harness-engineering.md](../../claude/harness-engineering.md) — 전체 시스템 설계 (v0.7.0, ADR-001~010)
 - [ego-design.md](../../claude/ego-design.md) — EGO 내부 설계 (v0.3.0)
 - [ego-persona.md](../../claude/ego-persona.md) — 페르소나 시스템 (v0.2.0)
+- [visualize_architecture.md](../../claude/visualize_architecture.md) — TUI + Webapp 블록 다이어그램 (v0.6.0)
 - [current_process.md](../../claude/current_process.md) — 세션 간 진행 상태 스냅샷

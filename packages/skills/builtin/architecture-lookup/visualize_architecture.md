@@ -1,18 +1,17 @@
-# visualize_architecture.md — TUI 메시지 흐름 블록 다이어그램
+# visualize_architecture.md — TUI/Webapp 메시지 흐름 블록 다이어그램
 
-<!--
-  Mirrored from D:\ai\claude\visualize_architecture.md (v0.5.0).
-  To regenerate after architectural changes, follow §12 "재생성 가이드"
-  in the design repository and copy the updated file back here, then bump
-  `packages/skills/builtin/architecture-lookup/manifest.json#version`.
--->
-
-
-> **문서 버전**: v0.5.0
-> **작성일**: 2026-04-19
-> **상위 문서**: harness-engineering.md v0.6.0 / ego-design.md v0.3.0 / agent-orchestration.md v0.1.0
-> **목적**: `agent-tui` 에 타이핑된 키스트로크가 최종 응답으로 돌아오기까지 거치는 모든 블록을 한눈에 보이게 한다. 각 블록의 (입력 → 처리 → 출력 → 다음 블록) 을 규약과 함께 기록해, 코드가 바뀌어도 본 문서의 §12 "재생성 가이드" 만으로 새 다이어그램을 재현할 수 있도록 한다.
-> **스코프**: 설계 리포(`D:\ai\claude`) + 구현 리포(`D:\ai\agent-platform`) v0.6.0 기준. TUI → Gateway RPC → Control Plane → EGO → Agent Runner → Reasoner → (도구/모델/스킬) → 스트림 복귀 경로를 다룬다. webchat/HTTP/채널 어댑터는 동일 `handler()` 를 공유하므로 §11 에 짧게만 언급한다. 파이프라인에 가로지르는 **TraceLogger** 관찰성 레이어는 §13 에서 별도 서술한다.
+> **문서 버전**: v0.6.0
+> **작성일**: 2026-04-21
+> **상위 문서**: harness-engineering.md v0.7.0 / ego-design.md v0.3.0 / agent-orchestration.md v0.1.0
+> **목적**: `agent-tui` 및 브라우저 **webapp 대시보드** 에 입력된 사용자 발화가 최종 응답으로 돌아오기까지 거치는 모든 블록을 한눈에 보이게 한다. 각 블록의 (입력 → 처리 → 출력 → 다음 블록) 을 규약과 함께 기록해, 코드가 바뀌어도 본 문서의 §12 "재생성 가이드" 만으로 새 다이어그램을 재현할 수 있도록 한다.
+> **스코프**: 설계 리포(`D:\ai\claude`) + 구현 리포(`D:\ai\agent-platform`) v0.7.0 기준. TUI/Webapp → Gateway RPC → Control Plane → EGO → Agent Runner → Reasoner → (도구/모델/스킬) → 스트림 복귀 경로를 다룬다. TUI 와 Webapp 은 동일 `/rpc` 계약 위에서 돌아가며 인증만 다르다 — §14 "Webapp 서피스 차이" 에서 델타만 서술한다. webchat/HTTP/채널 어댑터는 동일 `handler()` 를 공유하므로 §11 에 짧게만 언급한다. 파이프라인에 가로지르는 **TraceLogger** 관찰성 레이어는 §13 에서 별도 서술한다.
+>
+> **v0.6 변경 요약** (ADR-010 반영):
+> - **신규 §14 "Webapp 서피스"**: `packages/webapp` (Vite + Lit 3) 도입 반영. TUI 의 [T1]~[T3] 에 대응하는 [B1]~[B3] 브라우저 블록, [D1] 디바이스 인증 컨트롤러, [G4] `/device/*` 라우트, [G5] WS `Sec-WebSocket-Protocol: bearer.<token>` 인증 분기.
+> - **신규 §15 "Phase-Format 공유"**: `formatPhase`/`PhaseIndicator`/`PHASE_LABELS`/`PHASE_ICONS` 가 `packages/core/src/schema/phase-format.ts` 로 승격 — TUI `<PhaseLine>` 과 Webapp `<phase-line>` 양쪽이 import. 서브패스 export `@agent-platform/core/phase-format`.
+> - **§3 Gateway 라우트 테이블 확장**: `/device/enroll`(마스터 Bearer 필요) · `/device/challenge` · `/device/assert` · `/ui/*` 정적 서빙. ApiGateway `TokenAuth` 에 secondary verifier (DeviceAuthStore) 체인 추가.
+> - **§3 신규 RPC 메서드**: `overview.status` / `channels.list` · `channels.status` / `instances.list` / `cron.list` · `cron.runNow` / `sessions.events` — Webapp Control 섹션 뷰가 소비. `RpcDeps.channels?` / `cron?` 은 옵셔널 레지스트리 주입 지점.
+> - **§0 전체 다이어그램**: TUI 위에 Webapp 블록이 병렬 배치. 두 서피스 모두 동일 `chat.phase` 스트림을 구독.
 >
 > **v0.5 변경 요약**:
 > - [E1] EgoLayer 에러 진단 확장: `SchemaValidationError` 가 실제 분류 `tag`(llm_invalid_json / llm_schema_mismatch / llm_out_of_range / llm_inconsistent_action / llm_invalid_target) + 파싱된 invalid `candidate` 를 전달. E1 `error` trace payload 가 `tag` · `validationErrors[{path,message}]` (5건 cap) · `candidatePreview` (800자 cap) 를 포함 — 이전에는 `error` 문자열만 남았음
@@ -42,12 +41,22 @@
 
 ## 0. 한눈에 보기 — 전체 블록 다이어그램
 
+TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서피스만 다르고 [G1] 이후는 공유. 아래 다이어그램은 TUI 경로 기준으로 그리고, Webapp 쪽 [B1]~[B3]/[D1]/[G4]/[G5] 블록은 §14 에서 분기 설명한다.
+
 ```
- ┌────────────────────────────────────────────────────────────────────────────┐
- │  사용자 터미널 (키보드)                                                      │
- └────────────────────────────────┬───────────────────────────────────────────┘
-                                  │ keypress
-                                  ▼
+ ┌────────────────────────────────┐          ┌────────────────────────────────┐
+ │  사용자 터미널 (TUI)             │          │  브라우저 탭 (Webapp)             │
+ └──────────────┬─────────────────┘          └──────────────┬─────────────────┘
+                │ keypress                                  │ click / type
+                ▼                                           ▼
+         [T1] InputBar                              [B1] chat-input (Lit)
+         [T2] App.send                              [B2] ChatController.send
+         [T3] RpcClient  ──── ws://…/rpc ────────── [B3] BrowserRpcClient
+                │ Bearer master token                │ Sec-WebSocket-Protocol
+                │ (Authorization header)             │   = 'bearer.<sessionToken>'
+                └─────────────┬──────────────────────┘
+                              │ (두 전송 방식 모두 [G1] 에서 합류)
+                              ▼
  ┌──────────────────────────────────────────────────────────────────────────────┐
  │ [T1] TUI: InputBar (Ink React)                                               │
  │      in : key events                                                         │
@@ -76,8 +85,11 @@
                                   ▼
  ┌──────────────────────────────────────────────────────────────────────────────┐
  │ [G1] ApiGateway  (control-plane/src/gateway/server.ts)                       │
- │      in : HTTP Upgrade + Bearer token                                        │
- │      do : 인증 + 레이트리밋 + path 라우팅. '/rpc' 로 upgrade → RpcServer     │
+ │      in : HTTP Upgrade + Bearer (TUI) 또는 Sec-WebSocket-Protocol            │
+ │           "bearer.<token>" (Webapp)                                          │
+ │      do : TokenAuth.verifyBearer — 마스터 토큰(timingSafeEqual) 실패 시       │
+ │           secondary verifier(DeviceAuthStore.verifySessionToken) 로 fallback │
+ │           → 레이트리밋 + path 라우팅. '/rpc' 로 upgrade → RpcServer          │
  │      out: 업그레이드된 WebSocket → RpcServer.handleUpgrade()                 │
  └────────────────────────────────┬─────────────────────────────────────────────┘
                                   │ upgraded WS
@@ -1076,7 +1088,160 @@ CREATE INDEX idx_trace_events_block  ON trace_events(block, timestamp);
 
 ---
 
-## 14. 변경 이력
+## 14. Webapp 서피스 (브라우저 대시보드) — TUI 경로 대비 델타
+
+Webapp 은 TUI 와 동일한 `/rpc` 엔드포인트·동일 RPC 메서드 세트·동일 `chat.phase` 스트림을 소비한다. 본 섹션은 **TUI 경로 대비 달라지는 지점** 만 블록 단위로 기술한다. [G1] 이후는 TUI 와 공유되므로 §3~§10 를 그대로 참조.
+
+### 14.1 서피스 대응 표 (TUI [T*] ↔ Webapp [B*])
+
+| TUI 블록 | Webapp 블록 | 파일 |
+|---------|------------|------|
+| [T1] InputBar | [B1] `<chat-input>` | packages/webapp/src/ui/chat/chat-input.ts |
+| [T2] App.send | [B2] ChatController.send | packages/webapp/src/ui/controllers/chat-controller.ts |
+| [T3] RpcClient | [B3] BrowserRpcClient | packages/webapp/src/ui/controllers/rpc-client.ts |
+| `<PhaseLine>` (Ink) | `<phase-line>` (Lit) | packages/webapp/src/ui/components/phase-line.ts |
+| (해당 없음) | [D1] DeviceIdentity | packages/webapp/src/ui/controllers/device-identity.ts |
+| (해당 없음) | [V*] view-overview/channels/instances/sessions/cron | packages/webapp/src/ui/views/ |
+
+### 14.2 블록 상세
+
+```
+ ┌──────────────────────────────────────────────────────────────────────────────┐
+ │ [B1] chat-input (Lit CustomElement)                                          │
+ │      in : DOM input event, Enter (w/o Shift)                                 │
+ │      do : trim 후 dispatch `chat-send` CustomEvent(detail: string)           │
+ │      out: bubbling CustomEvent                                               │
+ └────────────────────────────────┬─────────────────────────────────────────────┘
+                                  │
+                                  ▼
+ ┌──────────────────────────────────────────────────────────────────────────────┐
+ │ [B2] ChatController.send()                                                   │
+ │      in : text                                                               │
+ │      do : userId/agentId 발급, immutable update 로 turns 배열에 user +       │
+ │           placeholder assistant turn push (Lit 의 === 비교 때문에 spread 필수)│
+ │           params = { text, conversationId, sessionId? }                      │
+ │      out: gateway.call('chat.send', params, { timeoutMs: 5m })               │
+ └────────────────────────────────┬─────────────────────────────────────────────┘
+                                  │
+                                  ▼
+ ┌──────────────────────────────────────────────────────────────────────────────┐
+ │ [B3] BrowserRpcClient.call()                                                 │
+ │      in : method, params, options                                            │
+ │      do : [D1] DeviceIdentity.assert() 로 세션 토큰 확보                      │
+ │           new WebSocket(wsUrl, [`bearer.${token}`])  — 서브프로토콜로 인증    │
+ │           JSON-RPC 2.0 request 프레임 전송                                    │
+ │      out: Promise<R> — 서버 success/error frame 수신 시 resolve/reject        │
+ └────────────────────────────────┬─────────────────────────────────────────────┘
+                                  │ JSON-RPC over WS (subprotocol auth)
+                                  ▼
+                             (합류 지점: [G1] 부터 TUI 와 동일 경로)
+```
+
+### 14.3 [D1] DeviceIdentity — 브라우저 전용 인증 플로우
+
+TUI 는 프로세스 환경변수/CLI 인자로 마스터 Bearer 를 확보하지만, 브라우저는 XSS 노출 최소화를 위해 device-identity 를 사용.
+
+```
+ ┌──────────────────────────────────────────────────────────────────────────────┐
+ │ [D1a] 최초 실행 (IndexedDB 에 키 없음)                                         │
+ │      in : 사용자가 `<enroll-dialog>` 에 마스터 Bearer 입력                     │
+ │      do : @noble/ed25519 로 keypair 생성                                      │
+ │           개인키 → IndexedDB (agent-platform/keys/devicePrivKey)              │
+ │           공개키 → localStorage (ap:devicePubKeyHex)                          │
+ │           fetch('/device/enroll', headers: Bearer <master>,                   │
+ │                 body: {publicKeyHex, name})                                   │
+ │      out: {deviceId} → localStorage(ap:deviceId)                              │
+ └──────────────────────────────────────────────────────────────────────────────┘
+
+ ┌──────────────────────────────────────────────────────────────────────────────┐
+ │ [D1b] 매 연결 전 DeviceIdentity.assert()                                      │
+ │      in : (캐시된 세션 토큰 만료 시)                                           │
+ │      do : POST /device/challenge {deviceId} → nonce (hex)                     │
+ │           ed.signAsync(nonce_bytes, privKey) → signatureHex                   │
+ │           POST /device/assert {deviceId, challenge, signature}                │
+ │      out: {token, expiresAt} → 메모리 캐시 (TTL 1h 기본, 30s margin)          │
+ └──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**저장 분리 이유**: 개인키는 JS 에서 export 불가능한 저장소가 이상적이나 IndexedDB 가 현실적인 차선 — `localStorage` 와 달리 Storage 이벤트로 스크립트가 쉽게 감시할 수 없음. 공개키/deviceId 는 유출되어도 서명 없이는 무용.
+
+### 14.4 [G4] `/device/*` 라우트 — control-plane/gateway/server.ts
+
+| 경로 | 메서드 | 인증 | 처리 |
+|------|--------|------|------|
+| `/device/enroll` | POST | 마스터 Bearer 필요 | `DeviceAuthStore.enroll(publicKeyHex, name)` — 동일 pubkey 재등록은 deviceId 유지 (idempotent) |
+| `/device/challenge` | POST | 미인증 | `DeviceAuthStore.issueChallenge(deviceId?)` — 32B 랜덤, 2분 TTL, 선택적 deviceId 피닝 |
+| `/device/assert` | POST | 미인증 | `consumeChallenge` + `verifyEd25519` (node:crypto SPKI DER 래핑) → `issueSessionToken` — HMAC-SHA256 `v1.<deviceIdB64>.<expiryB64>.<rand>.<mac>` |
+| `/ui` `/ui/*` | GET | 미인증 | `webapp.dir` 에서 파일 직접 서빙. 없으면 `index.html` fallback (SPA). 확장자 allow-list(html/js/css/svg/png/woff2/...) |
+
+### 14.5 [G5] ApiGateway WS 업그레이드 — 인증 경로 2중 시도
+
+```
+handleUpgrade(req, socket, head):
+  ┌─ Authorization 헤더 있음? (TUI 경로)
+  │     → TokenAuth.verifyBearer → ok → upgrade
+  │
+  └─ 없거나 실패? Sec-WebSocket-Protocol 에서 "bearer.<token>" 찾기 (Webapp 경로)
+        → TokenAuth.verifyToken(token) → ok → upgrade
+        → 실패 시 HTTP/1.1 401 Unauthorized 반환 후 destroy
+```
+
+`TokenAuth` 는 마스터 토큰(timingSafeEqual) 매칭 실패 시 `SecondaryVerifier` (DeviceAuthStore) 에 위임 — TUI 와 Webapp 모두 동일 함수 통과.
+
+### 14.6 Webapp Control 섹션 뷰 — Polling 모델
+
+Chat 은 event-driven (RPC + notification) 이지만 Control 섹션(Overview/Channels/Instances/Sessions/Cron) 은 **5초 주기 폴링** 으로 공급된다.
+
+```
+ ┌──────────────────────────────────────────────────────────────────────────────┐
+ │ [B4] PollingController (5s interval, visibilitychange 시 pause)              │
+ │      do : Promise.all([overview.status, channels.list, instances.list,        │
+ │                         cron.list, sessions.list]) 5개 RPC 병렬 호출           │
+ │      out: 스냅샷 필드 갱신 → host.requestUpdate() → 각 view-* 가 구독 렌더     │
+ └──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**주의**: `channels.list` / `cron.list` 는 `RpcDeps.channels?` / `RpcDeps.cron?` 레지스트리가 주입되지 않으면 빈 배열 반환 — 현 플랫폼 와이어링은 두 레지스트리 모두 미주입이라 뷰는 "registered adapter 없음" 상태를 정상 표시. 실 데이터 공급은 차기 작업.
+
+---
+
+## 15. Phase-Format 공유 (`@agent-platform/core/phase-format`)
+
+TUI `<PhaseLine>` (Ink `<Text>`) 과 Webapp `<phase-line>` (Lit template) 은 서로 다른 렌더러지만 **완전히 동일한 문자열** 을 표시해야 한다 — "어떤 서피스에서 보든 같은 진실" 원칙(harness §3.2B). 이를 강제하는 구조:
+
+```
+packages/core/src/schema/phase-format.ts  ── 단일 소스 오브 트루스
+  ├─ PhaseIndicator { phase, elapsedMs, toolName?, stepIndex?, totalSteps?, attemptNumber? }
+  ├─ formatPhase(p: PhaseIndicator): string    — 순수 함수, Ink/DOM 의존성 없음
+  ├─ PHASE_LABELS: Record<Phase, string>        — 'ego', 'tool', 'step', ...
+  └─ PHASE_ICONS : Record<Phase, string>        — '◉', '🔧', '▶', ...
+
+서브패스 export: @agent-platform/core/phase-format
+  └─ 이유: core 메인 엔트리는 node:crypto 를 transitively import 하므로 브라우저 번들러가
+          실패. phase-format 만 분리 노출해서 webapp 이 node-only deps 을 끌어오지 않도록.
+
+소비자:
+  packages/tui/src/components/StatusLine.tsx
+    → `export { formatPhase } from '@agent-platform/core'` (재export, 하위호환)
+  packages/tui/src/components/PhaseLine.tsx
+    → `import { formatPhase } from '@agent-platform/core'`
+  packages/webapp/src/ui/components/phase-line.ts
+    → `import { formatPhase } from '@agent-platform/core/phase-format'`
+```
+
+### 15.1 Invariant
+
+- **출력 포맷 문자열 동일**: `[🔧 bash_run] 3.2s`, `[▶ 2/5 file_read] 5.1s`, `[↻ replan #2] 8.4s` 등. TUI/Webapp 에서 byte-wise 동일해야 함.
+- **PhaseIndicator shape 변경 시**: core 에 먼저 반영 → TUI `PhaseLine.tsx` 갱신 → Webapp `phase-line.ts` 갱신 (한 PR 로 묶을 것).
+- **PHASE_LABELS / PHASE_ICONS Map 키 집합**: `Phase` 유니온 과 정확히 일치 (exhaustive). 새 Phase 추가 시 `phase.ts` 먼저 → `phase-format.ts` Map 둘 다 채움 → 미채움 시 TS 컴파일 실패.
+
+### 15.2 유닛 테스트 단일화
+
+`packages/tui/src/components/StatusLine.test.ts` 가 `formatPhase` 6 케이스 커버. core 로 이동 후에도 TUI 의 재export 경로로 동일 테스트가 회귀 검증. Webapp 쪽 별도 테스트는 미추가 (동일 함수를 import 하므로 회귀 위험 최소).
+
+---
+
+## 16. 변경 이력
 
 - **v0.1.0 (2026-04-18)** — 초판. 설계 문서 v0.5.0 + 구현 v0.5.0 (516/517 테스트 통과) 기준. TUI → /rpc → Platform handler → EGO → AgentRunner → HybridReasoner → ReAct/Plan-Execute 전 구간 블록화. §12 재생성 가이드 포함.
 - **v0.2.0 (2026-04-18)** — E1 배선 업데이트: `createEgoLlmAdapter` 팩토리 + OpenAI/Anthropic 멀티 provider + `FallbackEgoLlmAdapter` 데코레이터 + `defaultActiveEgoConfig` 기본값 OpenAI 로 전환. §13 TraceLogger 신규 섹션 (pipeline-wide 이벤트 로깅 + `agent trace` CLI). §12.1 / §12.3 / §12.5 재생성 가이드에 provider / trace 체크 항목 추가. 구현 테스트 538/539 → 556/557 (신규 +18건, OTLP optional peer 실패 1건 불변).
@@ -1104,3 +1269,11 @@ CREATE INDEX idx_trace_events_block  ON trace_events(block, timestamp);
   - **[K1] Skill loader `call` alias**: agent-authored skill 이 `execute(args, ctx)` 대신 레거시 `call(args, ctx)` 를 썼을 때 `loaded.execute is not a function` 으로 실패하던 회귀 수정. `loadSkillTools` 가 `normalizeToolHandler` 로 handler 이름 정규화 — 다른 필드(`description` / `permissions` / `riskLevel` / `inputSchema` / `runsInContainer` / `dockerCommand`)는 그대로 보존. 둘 다 없으면 명확한 에러. `skill.create` 의 `sourceCode` description 에 "`execute(args, ctx)` required" 명시.
   - **[K2] `trace-lookup` 내장 스킬 신규**: 에이전트가 자기 자신의 파이프라인 trace 를 조회하도록 `trace.list` / `trace.show` / `trace.last` 3 툴 노출. `<stateDir>/trace/traces.db` 를 `{ readOnly: true }` 로 open, 매 호출 open/close (WAL writer 와 공존). `packages/observability/src/trace-query.ts` 의 3 가지 SQL 을 install 환경 제약(`~/.agent/skills/<id>/` — workspace 패키지 import 불가) 때문에 복제. self-contained(`node:sqlite` 만 사용), `permissions: []`, `riskLevel: 'low'`.
   - **문서**: §1 헤더 v0.5 요약, §6 E1 deep path 검증·에러 처리 블록, §9 [K1] Handler 정규화 / [K2] 내장 스킬 목록 확장, §13.3 이벤트 매트릭스 E1 error payload 필드 추가, §14 본 엔트리.
+- **v0.6.0 (2026-04-21)** — ADR-010 브라우저 대시보드 + device-identity 인증 엔드투엔드 반영:
+  - **신규 §14 "Webapp 서피스"**: packages/webapp (Vite + Lit 3) 블록 다이어그램. [B1] `<chat-input>` → [B2] ChatController.send → [B3] BrowserRpcClient → [G1] 합류. [D1] DeviceIdentity 의 enroll/assert 2단계 플로우 (@noble/ed25519 + IndexedDB). [G4] `/device/{enroll,challenge,assert}` 라우트 + `/ui/*` 정적 서빙. [G5] ApiGateway WS 업그레이드가 Authorization 헤더와 `Sec-WebSocket-Protocol: bearer.<token>` 서브프로토콜을 이중 시도. Control 섹션 뷰 폴링 모델([B4] PollingController, 5s + visibilitychange pause).
+  - **신규 §15 "Phase-Format 공유"**: `formatPhase`/`PhaseIndicator`/`PHASE_LABELS`/`PHASE_ICONS` 를 `packages/tui/src/components/StatusLine.tsx` → `packages/core/src/schema/phase-format.ts` 로 이전. 서브패스 export `@agent-platform/core/phase-format` 신설(webapp 이 node-only deps 을 transitively 끌어오지 않도록). TUI StatusLine 은 하위호환 재export 유지. Invariant: 출력 포맷 바이트 동일, PhaseIndicator shape 변경 시 core → TUI → Webapp 한 PR 로 업데이트.
+  - **§0 한눈에 보기**: TUI 위에 Webapp 블록 병렬 배치. 두 서피스가 [G1] 에서 합류함을 도식화.
+  - **[G1] ApiGateway**: `TokenAuth.verifyBearer` 가 마스터 토큰 timingSafeEqual 실패 시 `SecondaryVerifier` (DeviceAuthStore) 에 fallback — TUI 와 Webapp 모두 동일 함수 통과.
+  - **[G3] RpcMethods 확장**: `overview.status`, `channels.list`, `channels.status`, `instances.list`, `cron.list`, `cron.runNow`, `sessions.events` 7 메서드 추가. `RpcDeps.channels?: ChannelRegistry` / `cron?: CronRegistry` 옵셔널 — 미주입 시 각각 빈 배열 반환 (UI 는 정상 렌더).
+  - **플랫폼 배선**: `agent gateway start` 가 `<stateDir>/state/devices.json` 경로로 `DeviceAuthStore` 자동 초기화. `webappDir` 옵션 제공 시 `/ui/*` 정적 서빙 활성화.
+  - **테스트**: +13 (control-plane/gateway/device-auth.test.ts — enroll idempotency, pubkey shape, session token TTL, tamper detection, revoke, challenge replay/pin, cross-instance persistence, TokenAuth master fallback, TokenAuth device fallback).

@@ -1,11 +1,22 @@
 # Architecture Overview
 
-설계 문서 [`harness-engineering.md`](../../claude/harness-engineering.md) 의 ADR-001 ~ ADR-007 에
+설계 문서 [`harness-engineering.md`](../../claude/harness-engineering.md) 의 ADR-001 ~ ADR-010 에
 기반하며, 이 문서는 **구현 관점의 실제 코드 구조**를 설명합니다.
 
 ## 1. 전체 데이터 흐름
 
 ```
+직접 운영자 서피스 (ADR-008/010)
+┌─────────────────┐    ┌──────────────────────┐
+│ TUI (Ink+React) │    │ Webapp (Lit 3 SPA)   │
+│ Bearer master   │    │ ed25519 device-id +  │
+│                 │    │ HMAC session token   │
+└────────┬────────┘    └──────────┬───────────┘
+         │                        │
+         │ ws://…/rpc (JSON-RPC 2.0, chat.phase shared)
+         └────────────┬───────────┘
+                      │
+                      ▼
 ┌────────────────┐   ┌──────────────┐   ┌─────────────────┐   ┌───────────────┐
 │ Channel Adapter│──▶│ Message Bus  │──▶│   EGO Layer    │──▶│ Control Plane │
 │ (WS/Telegram   │   │ (InProcess/  │   │  (optional)    │   │ (Router +     │
@@ -32,7 +43,12 @@
 - `state = 'passive'` — EGO 가 판단만 수행, 통과 그대로
 - `state = 'active'` — EGO 가 판단 + 개입 (enrich/redirect/direct_response)
 
-## 2. 14 패키지 지도
+**운영자 서피스 (ADR-008/010)**:
+- TUI (`packages/tui`) 와 Webapp (`packages/webapp`) 은 모두 `/rpc` JSON-RPC 2.0 엔드포인트에서 동일한 메서드를 소비 — `chat.*`, `sessions.*`, `overview.status`, `channels.list`, `instances.list`, `cron.list`.
+- 인증 차등: TUI 는 `Authorization: Bearer <master>`, Webapp 은 `Sec-WebSocket-Protocol: bearer.<sessionToken>` 서브프로토콜 + ed25519 device-identity enrollment.
+- 공유 Phase 스트림: `chat.phase` JSON-RPC notification 을 둘 다 구독, `packages/core/src/schema/phase-format.ts` 의 `formatPhase` 로 동일 문자열 렌더(`[🔧 bash_run] 3.2s` 등).
+
+## 2. 패키지 지도
 
 ```
 packages/
@@ -50,8 +66,11 @@ packages/
 │   ├── session/manager.ts  ControlPlaneSessionManager (Contracts.SessionManager)
 │   ├── session/router.ts   RuleRouter (규칙 기반 라우팅) + Router (레거시)
 │   └── gateway/
-│       ├── server.ts       ApiGateway (HTTP + WS, /healthz, /messages, /ws)
-│       ├── auth.ts         TokenAuth (Bearer 토큰)
+│       ├── server.ts       ApiGateway (HTTP + WS, /healthz, /messages, /ws,
+│       │                   /rpc mount, /device/*, /ui/*)
+│       ├── auth.ts         TokenAuth (Bearer + 선택적 secondary verifier)
+│       ├── device-auth.ts  DeviceAuthStore (ed25519 enroll/assert + HMAC 토큰,
+│       │                   ADR-010)
 │       ├── rate-limiter.ts 토큰 버킷 레이트리미터
 │       └── envelope.ts     WebSocket envelope 스키마
 │
@@ -116,11 +135,37 @@ packages/
 │   ├── pairing.ts         pairing code + HMAC-SHA256 토큰
 │   └── server.ts          DeviceNodeServer (WS /device)
 │
+├── gateway-cli            ◀─── 데몬 게이트웨이 + JSON-RPC 서버 (ADR-008)
+│   ├── rpc/server.ts      RpcServer (JSON-RPC 2.0 over WS, notify 지원)
+│   ├── rpc/methods.ts     chat.send/history, sessions.list/events/reset,
+│   │                      overview.status, channels.list/status,
+│   │                      instances.list, cron.list/runNow,
+│   │                      gateway.health/shutdown
+│   ├── lifecycle/         pid/port 파일 + detach fork + 상태 디렉토리
+│   └── service/           launchd / systemd-user / schtasks 어댑터
+│
+├── tui                    ◀─── Ink + React 터미널 대시보드 (ADR-008)
+│   ├── App.tsx            최상위 — PhaseLine/ChatHistory/InputBar
+│   ├── hooks/useRpc.ts    WS 재연결 + notification 라우팅
+│   └── lib/rpc-client.ts  Node ws 기반 JSON-RPC 클라이언트
+│
+├── webapp                 ◀─── Vite + Lit 3 브라우저 대시보드 (ADR-010)
+│   ├── src/main.ts        엔트리 (app-root 마운트)
+│   ├── src/ui/components/ app-root / app-header / app-sidebar / phase-line /
+│   │                      enroll-dialog / health-indicator / theme-toggle / nav-item
+│   ├── src/ui/views/      view-chat / view-overview / view-channels /
+│   │                      view-instances / view-sessions / view-cron
+│   ├── src/ui/chat/       chat-transcript / chat-bubble / chat-input
+│   └── src/ui/controllers/gateway (ReactiveController) / chat / phase /
+│                          polling / view-state / device-identity /
+│                          rpc-client (browser)
+│
 ├── cli
 │   ├── program.ts         Commander.js 커맨드 등록
-│   ├── commands/          send / status / ego
+│   ├── commands/          send / status / ego / gateway / tui
 │   └── runtime/
 │       └── platform.ts    startPlatform() — 모든 컴포넌트 와이어링
+│                          (ADR-010: devicesFile 기본 주입)
 │
 └── channels/
     ├── webchat/           브라우저 WS 어댑터 (/webchat)
@@ -235,11 +280,13 @@ user message 도착
 | Persona | `~/.agent/ego/persona.json` | strict JSON | PersonaManager |
 | Goals | `~/.agent/ego/goals.json` | strict JSON | FileGoalStore |
 | Audit | `~/.agent/ego/audit.db` | SQLite | SqliteAuditLog |
-| Sessions | `./agent-sessions.db` | SQLite | SessionStore |
+| Sessions | `<stateDir>/state/sessions.db` | SQLite | SessionStore |
 | Memory | `~/.agent/memory/palace.db` + `wings/` | SQLite + Markdown | PalaceMemorySystem |
 | System prompt | `~/.agent/ego/system-prompt.md` | Markdown | EGO |
+| Devices | `<stateDir>/state/devices.json` | JSON (mode 0o600) | DeviceAuthStore (ADR-010) |
+| Trace | `<stateDir>/trace/traces.db` | SQLite | SqliteTraceLog |
 
-경로 분리 원칙: `~/.agent/memory/` 는 메모리 시스템 전용, `~/.agent/ego/` 는 EGO 전용. 서로 직접 쓰지 않음.
+경로 분리 원칙: `~/.agent/memory/` 는 메모리 시스템 전용, `~/.agent/ego/` 는 EGO 전용, `~/.agent/state/` 는 control-plane/device-auth 전용. 서로 직접 쓰지 않음.
 
 ## 8. 관측 가능성 3가지 기둥
 
@@ -251,5 +298,5 @@ user message 도착
 
 - [getting-started.md](getting-started.md) — 설치 + 첫 대화
 - [configuration.md](configuration.md) — 모든 설정 파일 필드
-- [tutorials/](tutorials/) — 단계별 사용 예제
-- 원본 설계: [harness-engineering.md](../../claude/harness-engineering.md), [ego-design.md](../../claude/ego-design.md), [ego-persona.md](../../claude/ego-persona.md)
+- [tutorials/](tutorials/) — 단계별 사용 예제 (08 webapp-dashboard 포함)
+- 원본 설계: [harness-engineering.md](../../claude/harness-engineering.md) (v0.7, ADR-010), [ego-design.md](../../claude/ego-design.md), [ego-persona.md](../../claude/ego-persona.md), [visualize_architecture.md](../../claude/visualize_architecture.md) (§14 Webapp 블록 다이어그램, §15 Phase-Format 공유)

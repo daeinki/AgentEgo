@@ -167,6 +167,49 @@ Daily cost cap: $5
 schemaVersion=1.1.0, llm=null 이므로 깊은 경로를 사용하려면 LLM 필드를 수동 채워야 합니다
 ([configuration.md](../configuration.md#egojson--ego-설정) 참조).
 
+### `agent gateway <sub>`
+
+데몬 모드 게이트웨이 수명 제어. 기동 시 `<stateDir>/state/devices.json` 경로로 DeviceAuthStore 를 자동 초기화하므로 브라우저 대시보드가 곧바로 device-identity enrollment 가능.
+
+| 서브커맨드 | 설명 | 주요 옵션 |
+|-----------|------|----------|
+| `start` | 포그라운드 기동 (또는 `--detach` 로 데몬화) | `--port <n>`(기본 18790), `--host <h>`(기본 127.0.0.1), `--auth-token <t>`(기본 `dev-token`), `--detach` |
+| `stop` | 데몬 종료 (pidfile 기반) | — |
+| `status` | pid/port/uptime 요약 | — |
+| `health` | `gateway.health` RPC 호출 후 결과 표시 | `--timeout <ms>` |
+| `logs` | `<stateDir>/logs/gateway.{log,err.log}` tail | `-f, --follow`, `-n <lines>` |
+| `install` / `uninstall` / `restart` | OS 서비스(launchd / systemd-user / schtasks) 통합 | 플랫폼별 |
+
+**기동 예시**
+```bash
+# 개발 — 포그라운드, 기본 토큰
+pnpm --filter @agent-platform/cli dev -- gateway start
+# → "auth  Bearer dev-token"
+
+# 실사용 — detach + 커스텀 토큰
+pnpm --filter @agent-platform/cli dev -- gateway start \
+    --detach --port 18790 --auth-token $(openssl rand -hex 16)
+```
+
+게이트웨이가 기동되면 두 RPC 소비자가 연결 가능:
+- **TUI**: `agent tui` (Ink 기반)
+- **Webapp**: `pnpm --filter @agent-platform/webapp dev` 로 Vite 기동 후 `http://localhost:5173/` 접속 (device-identity enrollment 필요)
+
+### `agent tui`
+
+Ink 기반 터미널 대시보드. 게이트웨이 `/rpc` 에 WebSocket 접속 + 마스터 Bearer 인증.
+
+| 옵션 | 기본값 | 설명 |
+|------|--------|------|
+| `-h, --host <h>` | `127.0.0.1` | 게이트웨이 호스트 |
+| `-p, --port <n>` | (portfile 자동 해석) | 게이트웨이 포트 |
+| `--auth-token <t>` | `AGENT_GATEWAY_TOKEN` env | Bearer 토큰 |
+| `-s, --session <id>` | — | 기존 세션 재개 (히스토리 40건 로드) |
+
+### `agent trace <sub>`
+
+[디버깅 · trace 조회](../../README.md#디버깅--trace-조회) 섹션 참조. `trace list / show / last / export` 4개 서브커맨드.
+
 ## 환경 변수
 
 CLI 는 `.env` 파일을 자동 로드하지 않습니다 (dotenv 통합은 CLI 호출 방식에 따라 다름). 안전한 방식:
@@ -188,6 +231,13 @@ npx dotenv-cli -- agent send "hi"
 | `ANTHROPIC_API_KEY` | ✅ (LLM 호출 시) | Claude API 키 |
 | `AGENT_MODEL` | — | 기본 에이전트 모델 (기본: `claude-sonnet-4-20250514`) |
 | `OPENAI_API_KEY` | — | 엠베더·폴백 |
+| `AGENT_GATEWAY_TOKEN` | — | `gateway start` 의 마스터 Bearer 토큰 (CLI 인자 미지정 시 사용, 기본 `dev-token`) |
+| `AGENT_GATEWAY_PORT` | — | `gateway start` 포트 (기본 18790) |
+| `AGENT_GATEWAY_HOST` | — | `gateway start` 바인딩 호스트 (기본 127.0.0.1) |
+| `AGENT_STATE_DIR` | — | 상태 루트 (기본 `~/.agent`). `state/sessions.db`, `state/devices.json`, `trace/traces.db`, `logs/`, `run/` 모두 여기 하위 |
+| `AGENT_GATEWAY_ORIGIN` | — | `pnpm --filter @agent-platform/webapp dev` 가 프록시할 게이트웨이 origin (기본 `http://127.0.0.1:18790`) |
+| `AGENT_TRACE` | — | `0` 설정 시 trace 기록 비활성화 |
+| `AGENT_TRACE_RETENTION_DAYS` | — | trace row 보관 일수 (기본 14) |
 
 ## 종료 코드
 

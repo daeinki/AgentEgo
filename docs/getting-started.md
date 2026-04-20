@@ -103,6 +103,24 @@ OPENAI_API_KEY: not set
 - **[tutorials/04-webchat-browser.md](tutorials/04-webchat-browser.md)** — 브라우저에서 대화하기
 - **[tutorials/05-telegram-bot.md](tutorials/05-telegram-bot.md)** — Telegram 봇으로 배포
 - **[tutorials/06-custom-tool.md](tutorials/06-custom-tool.md)** — 나만의 도구 만들기
+- **[tutorials/07-gateway-tui.md](tutorials/07-gateway-tui.md)** — 데몬 게이트웨이 + Ink TUI 클라이언트
+- **[tutorials/08-webapp-dashboard.md](tutorials/08-webapp-dashboard.md)** — 브라우저 대시보드 (OpenClaw 스타일)
+
+### 빠른 대시보드 한 번 띄워보기
+
+브라우저 UI 를 바로 보고 싶다면:
+
+```bash
+# 터미널 A — 게이트웨이 + device-auth 초기화
+pnpm --filter @agent-platform/cli dev -- gateway start
+# → "auth  Bearer dev-token" 이 출력됨
+
+# 터미널 B — Vite dev 서버 (proxy 포함)
+pnpm --filter @agent-platform/webapp dev
+# → http://localhost:5173/ 접속 → Enroll 다이얼로그에 dev-token 입력
+```
+
+이후 브라우저는 ed25519 device-identity 로 단명 세션 토큰을 자동 발급받아 유지합니다. 자세한 내용은 튜토리얼 08 참조.
 
 ## Troubleshooting
 

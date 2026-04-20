@@ -15,6 +15,9 @@
 - **스킬 시스템** — 서명된 스킬 레지스트리 + 동적 tool 로더.
 - **워크플로** — 선언적 DSL 인터프리터 (`sequence`/`parallel`/`branch`/`tool_call`).
 - **디바이스 노드** — macOS/iOS/Android/Linux/Windows 셸 페어링 프로토콜.
+- **두 가지 운영자 서피스**:
+  - **TUI** — Ink + React 기반 터미널 대시보드. 마스터 Bearer 토큰으로 인증.
+  - **Web Dashboard** — Vite + Lit 3 브라우저 SPA (OpenClaw 스타일). ed25519 device-identity 로 enroll → 단명 HMAC 세션 토큰 사용. `/ui/*` 로 gateway 직접 서빙 또는 `pnpm --filter @agent-platform/webapp dev` 로 개별 기동.
 
 ## 빠른 시작
 
@@ -109,18 +112,18 @@ pnpm --filter @agent-platform/cli dev -- trace export trc-01JA... --format ndjso
 
 - **[docs/README.md](docs/README.md)** — 문서 전체 인덱스
 - [docs/getting-started.md](docs/getting-started.md) — 설치부터 첫 대화까지
-- [docs/architecture.md](docs/architecture.md) — 14개 패키지 구조·데이터 흐름
+- [docs/architecture.md](docs/architecture.md) — 패키지 구조·데이터 흐름
 - [docs/configuration.md](docs/configuration.md) — `ego.json` / `persona.json` / 환경 변수 레퍼런스
-- [docs/tutorials/](docs/tutorials/) — 6개 튜토리얼 (단순 에이전트 → EGO → 메모리 → 채널 → 도구)
+- [docs/tutorials/](docs/tutorials/) — 단순 에이전트 → EGO → 메모리 → 채널 → 도구 → 게이트웨이/TUI → 웹 대시보드
 - [docs/reference/cli.md](docs/reference/cli.md) — CLI 명령어 레퍼런스
 - [docs/migration/v0.2-to-v0.3.md](docs/migration/v0.2-to-v0.3.md) — 기존 설정 마이그레이션
 
-## 패키지 구조 (14개)
+## 패키지 구조 (18개)
 
 | 패키지 | 설명 |
 |--------|------|
-| [`@agent-platform/core`](packages/core) | 공유 타입·TypeBox 스키마·contracts (14개 인터페이스) |
-| [`@agent-platform/control-plane`](packages/control-plane) | SessionManager + RuleRouter + ApiGateway (HTTP+WS) |
+| [`@agent-platform/core`](packages/core) | 공유 타입·TypeBox 스키마·contracts. 서브패스 export `@agent-platform/core/phase-format` 는 TUI/webapp 이 동일 PhaseLine 을 렌더하도록 공유하는 단일 소스. |
+| [`@agent-platform/control-plane`](packages/control-plane) | SessionManager + RuleRouter + ApiGateway (HTTP+WS). `DeviceAuthStore` (ed25519 enroll/assert + HMAC 세션 토큰) + `/device/*` · `/ui/*` 라우트. |
 | [`@agent-platform/ego`](packages/ego) | S1~S7 EGO 파이프라인 + GoalStore + PersonaManager + AuditLog |
 | [`@agent-platform/memory`](packages/memory) | PalaceMemorySystem + FTS5 + cosine + LlmCompactor |
 | [`@agent-platform/agent-worker`](packages/agent-worker) | AgentRunner + PromptBuilder + Sandbox + built-in tools |
@@ -129,8 +132,11 @@ pnpm --filter @agent-platform/cli dev -- trace export trc-01JA... --format ndjso
 | [`@agent-platform/message-bus`](packages/message-bus) | InProcessBus + RedisStreamsBus |
 | [`@agent-platform/workflow`](packages/workflow) | Workflow DSL + 인터프리터 |
 | [`@agent-platform/device-node`](packages/device-node) | 디바이스 WS 프로토콜 (페어링/하트비트/푸시) |
+| [`@agent-platform/gateway-cli`](packages/gateway-cli) | JSON-RPC 2.0 over WS. `chat.*`, `sessions.*`, `overview.status`, `channels.list/status`, `instances.list`, `cron.list/runNow`, `sessions.events`. TUI · webapp 이 공유. |
+| [`@agent-platform/tui`](packages/tui) | Ink + React 터미널 대시보드. |
+| [`@agent-platform/webapp`](packages/webapp) | Vite + Lit 3 브라우저 SPA. 6개 뷰(Chat/Overview/Channels/Instances/Sessions/Cron) + 공유 `<phase-line>` 컴포넌트 + ed25519 device-identity. |
 | [`@agent-platform/cli`](packages/cli) | CLI 명령어 + 런타임 플랫폼 와이어링 |
-| [`@agent-platform/channel-webchat`](packages/channels/webchat) | 브라우저 WebSocket 어댑터 |
+| [`@agent-platform/channel-webchat`](packages/channels/webchat) | 브라우저 WebSocket 어댑터 (채널 계약용 — 대시보드 webapp 과 별개) |
 | [`@agent-platform/channel-telegram`](packages/channels/telegram) | Telegram Bot API 어댑터 |
 | [`@agent-platform/channel-slack`](packages/channels/slack) | Slack Events API + Web API |
 | [`@agent-platform/channel-discord`](packages/channels/discord) | Discord REST + Gateway WS |
@@ -138,8 +144,8 @@ pnpm --filter @agent-platform/cli dev -- trace export trc-01JA... --format ndjso
 
 ## 빌드·테스트 상태
 
-- **빌드**: 13/13 패키지 ✅
-- **테스트**: 440/440 ✅ (58 파일)
+- **빌드**: 모든 패키지 ✅ (`pnpm -r run build`)
+- **테스트**: core/control-plane/gateway-cli/tui 183/183 ✅ (webapp 관련 회귀 포함 — `DeviceAuthStore` +13, `formatPhase` 이전 후 TUI 10 유지)
 - **타입 체크**: `strict: true` + `exactOptionalPropertyTypes: true` + `noUncheckedIndexedAccess: true`
 
 ## 요구사항
