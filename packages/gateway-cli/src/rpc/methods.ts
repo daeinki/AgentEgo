@@ -16,6 +16,43 @@ import { RpcError, RpcErrorCode } from './protocol.js';
 import type { RpcContext, RpcHandler } from './server.js';
 
 /**
+ * Read-only descriptor of a registered channel adapter, surfaced by the
+ * `channels.list` / `channels.status` RPCs. Channels are not owned by
+ * gateway-cli; this interface is what platform wiring passes in.
+ */
+export interface ChannelDescriptor {
+  id: string;
+  type: string;
+  status: 'connected' | 'disconnected' | 'error' | 'unknown';
+  lastEventAt?: number;
+  error?: string;
+  sessionCount?: number;
+}
+
+export interface ChannelRegistry {
+  list(): readonly ChannelDescriptor[];
+  get?(id: string): ChannelDescriptor | undefined;
+}
+
+/**
+ * Read-only descriptor of a scheduled task. Cron infrastructure is not yet
+ * wired; when no registry is provided, `cron.list` returns an empty array.
+ */
+export interface CronTaskDescriptor {
+  id: string;
+  spec: string;
+  status: 'idle' | 'running' | 'disabled' | 'error';
+  nextRunAt?: number;
+  lastRunAt?: number;
+  lastError?: string;
+}
+
+export interface CronRegistry {
+  list(): readonly CronTaskDescriptor[];
+  runNow?(id: string): Promise<{ startedAt: number }>;
+}
+
+/**
  * Dependencies required to construct the default RPC method registry. These
  * are the same components `startPlatform()` wires together — we reuse them
  * instead of duplicating wiring.
@@ -34,6 +71,15 @@ export interface RpcDeps {
   ports: { gateway: number; webchat?: number };
   /** Optional per-turn debug trace logger (pipeline block G3). */
   traceLogger?: Contracts.TraceLogger;
+  /**
+   * Optional channel adapter registry — powers `channels.list` /
+   * `channels.status`. Gateway-cli does not own channels; the platform
+   * startup layer builds this view and passes it in. Omit to report an
+   * empty channel list.
+   */
+  channels?: ChannelRegistry;
+  /** Optional scheduled-task registry — powers `cron.list` / `cron.runNow`. */
+  cron?: CronRegistry;
 }
 
 export function buildRpcMethods(deps: RpcDeps): Record<string, RpcHandler> {
@@ -224,6 +270,90 @@ export function buildRpcMethods(deps: RpcDeps): Record<string, RpcHandler> {
       // Compact aggressively: keep 0 recent events, rolling everything into a
       // single summary event. (Full deletion would break FK on session_events.)
       const result = deps.sessions.compactSession(sessionId, 0);
+      return { ok: true, ...result };
+    },
+
+    'sessions.events': async (params) => {
+      const p = requireObject(params, 'sessions.events');
+      const sessionId = requireString(p['sessionId'], 'sessions.events.sessionId');
+      const limit = optionalNumber(p['limit'], 'sessions.events.limit') ?? 100;
+      if (!deps.sessions.getSession(sessionId)) {
+        throw new RpcError(RpcErrorCode.NotFound, `session not found: ${sessionId}`);
+      }
+      const events = deps.sessions.getRecentEvents(sessionId, limit);
+      return { events };
+    },
+
+    'overview.status': async () => {
+      const sessions = deps.sessions.listSessions();
+      const agents = new Set<string>();
+      const byStatus: Record<string, number> = {};
+      for (const s of sessions) {
+        agents.add(s.agentId);
+        byStatus[s.status] = (byStatus[s.status] ?? 0) + 1;
+      }
+      const mem = process.memoryUsage();
+      return {
+        ok: true,
+        version: deps.version,
+        uptimeMs: deps.gateway.uptimeMs(),
+        sessionCount: sessions.length,
+        sessionsByStatus: byStatus,
+        activeAgents: [...agents].sort(),
+        channelCount: deps.channels?.list().length ?? 0,
+        memMB: Math.round(mem.rss / (1024 * 1024)),
+        pid: process.pid,
+      };
+    },
+
+    'channels.list': async () => {
+      return { channels: deps.channels?.list() ?? [] };
+    },
+
+    'channels.status': async (params) => {
+      const p = requireObject(params, 'channels.status');
+      const id = requireString(p['id'], 'channels.status.id');
+      const desc = deps.channels?.get?.(id) ?? deps.channels?.list().find((c) => c.id === id);
+      if (!desc) {
+        throw new RpcError(RpcErrorCode.NotFound, `channel not found: ${id}`);
+      }
+      return desc;
+    },
+
+    'instances.list': async () => {
+      // "Instances" = agent runners currently holding sessions. Without a
+      // dedicated registry we approximate by aggregating sessions per agentId.
+      const sessions = deps.sessions.listSessions();
+      const byAgent = new Map<
+        string,
+        { agentId: string; sessionCount: number; active: number; hibernated: number }
+      >();
+      for (const s of sessions) {
+        const entry = byAgent.get(s.agentId) ?? {
+          agentId: s.agentId,
+          sessionCount: 0,
+          active: 0,
+          hibernated: 0,
+        };
+        entry.sessionCount += 1;
+        if (s.status === 'active') entry.active += 1;
+        else if (s.status === 'hibernated') entry.hibernated += 1;
+        byAgent.set(s.agentId, entry);
+      }
+      return { instances: [...byAgent.values()] };
+    },
+
+    'cron.list': async () => {
+      return { tasks: deps.cron?.list() ?? [] };
+    },
+
+    'cron.runNow': async (params) => {
+      const p = requireObject(params, 'cron.runNow');
+      const id = requireString(p['id'], 'cron.runNow.id');
+      if (!deps.cron?.runNow) {
+        throw new RpcError(RpcErrorCode.MethodNotFound, 'cron scheduler not configured');
+      }
+      const result = await deps.cron.runNow(id);
       return { ok: true, ...result };
     },
   };

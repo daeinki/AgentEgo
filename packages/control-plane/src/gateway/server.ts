@@ -1,10 +1,14 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
+import { createPublicKey, verify as cryptoVerify } from 'node:crypto';
+import { createReadStream, existsSync, statSync } from 'node:fs';
+import { extname, join, normalize, resolve as resolvePath } from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { Contracts, Phase, PhaseEventDetail, StandardMessage } from '@agent-platform/core';
 import { generateTraceId } from '@agent-platform/core';
 import { RateLimiter, type RateLimiterConfig } from './rate-limiter.js';
 import { TokenAuth, type AuthConfig } from './auth.js';
+import { DeviceAuthStore } from './device-auth.js';
 import {
   encodeOutbound,
   parseInbound,
@@ -62,6 +66,13 @@ export type MessageHandler = (
   costUsd?: number;
 }>;
 
+export interface WebappServeConfig {
+  /** Absolute path to a built Vite dist/ directory. */
+  dir: string;
+  /** Feature flag. Defaults to true when `dir` is provided. */
+  enabled?: boolean;
+}
+
 export interface GatewayConfig {
   port: number;
   /**
@@ -82,6 +93,13 @@ export interface GatewayConfig {
   router: Contracts.Router;
   sessions: SessionStore;
   handler: MessageHandler;
+  /**
+   * When supplied, `TokenAuth` falls back to device-session tokens and the
+   * HTTP layer exposes `/device/enroll`, `/device/challenge`, `/device/assert`.
+   */
+  devices?: DeviceAuthStore;
+  /** Optional Vite-built SPA to serve at `/ui/*`. */
+  webapp?: WebappServeConfig;
 }
 
 export class ApiGateway {
@@ -95,19 +113,35 @@ export class ApiGateway {
 
   constructor(config: GatewayConfig) {
     this.config = config;
-    this.auth = new TokenAuth(config.auth);
+    this.auth = new TokenAuth(config.auth, config.devices);
     this.rateLimiter = new RateLimiter(config.rateLimit);
     this.http = createServer((req, res) => this.handleHttp(req, res));
     this.wss = new WebSocketServer({ noServer: true });
 
     this.http.on('upgrade', (req, socket, head) => {
-      const path = req.url ?? '';
+      const path = (req.url ?? '').split('?')[0] ?? '';
       if (path !== '/ws' && !this.mounts.has(path)) {
         socket.destroy();
         return;
       }
       const authHeader = req.headers['authorization'];
-      const decision = this.auth.verifyBearer(Array.isArray(authHeader) ? authHeader[0] : authHeader);
+      let decision = this.auth.verifyBearer(
+        Array.isArray(authHeader) ? authHeader[0] : authHeader,
+      );
+      if (!decision.ok) {
+        // Browser WebSocket API can't set Authorization; accept a fallback
+        // carried via Sec-WebSocket-Protocol as `bearer.<token>`. We then
+        // echo the subprotocol back so the upgrade succeeds.
+        const subprotos = parseSubprotocols(req.headers['sec-websocket-protocol']);
+        const bearer = subprotos.find((s) => s.startsWith('bearer.'));
+        if (bearer) {
+          decision = this.auth.verifyToken(bearer.slice('bearer.'.length));
+          if (decision.ok) {
+            // `ws` picks the accepted subprotocol from the handshake for us.
+            // We just ensure it's in the offered list, which it already is.
+          }
+        }
+      }
       if (!decision.ok) {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
@@ -172,12 +206,36 @@ export class ApiGateway {
       return sendJson(res, 200, { ok: true, service: 'control-plane' });
     }
 
+    // ── Public: browser device-auth handshake (challenge/assert) ─────────
+    // `/device/enroll` still requires master Bearer, but challenge & assert
+    // are the bootstrap that issues a session token so they must be reachable
+    // before auth succeeds.
+    if (this.config.devices) {
+      if (method === 'POST' && pathname === '/device/challenge') {
+        return this.handleDeviceChallenge(req, res);
+      }
+      if (method === 'POST' && pathname === '/device/assert') {
+        return this.handleDeviceAssert(req, res);
+      }
+    }
+
+    // ── Public: static webapp assets (`/ui/*`) ───────────────────────────
+    // The SPA authenticates itself via `/device/*` once loaded. Static
+    // assets stay unauthenticated — same posture as OpenClaw's dashboard.
+    if (method === 'GET' && this.isWebappEnabled() && isUiPath(pathname)) {
+      return this.handleUiAsset(pathname, res);
+    }
+
     const authHeader = Array.isArray(req.headers['authorization'])
       ? req.headers['authorization'][0]
       : req.headers['authorization'];
     const authz = this.auth.verifyBearer(authHeader);
     if (!authz.ok) {
       return sendJson(res, 401, { error: authz.reason ?? 'unauthorized' });
+    }
+
+    if (method === 'POST' && pathname === '/device/enroll' && this.config.devices) {
+      return this.handleDeviceEnroll(req, res);
     }
 
     // Sessions
@@ -333,6 +391,181 @@ export class ApiGateway {
       ws.send(encodeOutbound(env));
     }
   }
+
+  // ─── Device-auth routes ───────────────────────────────────────────────
+
+  private async handleDeviceEnroll(
+    req: IncomingMessage,
+    res: ServerResponse,
+  ): Promise<void> {
+    const body = await readBody(req);
+    let parsed: { publicKeyHex?: unknown; name?: unknown };
+    try {
+      parsed = JSON.parse(body) as typeof parsed;
+    } catch {
+      return sendJson(res, 400, { error: 'invalid JSON' });
+    }
+    const publicKeyHex =
+      typeof parsed.publicKeyHex === 'string' ? parsed.publicKeyHex : '';
+    const name = typeof parsed.name === 'string' ? parsed.name : 'browser';
+    try {
+      const device = this.config.devices!.enroll(publicKeyHex, name);
+      return sendJson(res, 200, {
+        deviceId: device.deviceId,
+        name: device.name,
+        enrolledAt: device.enrolledAt,
+      });
+    } catch (err) {
+      return sendJson(res, 400, { error: (err as Error).message });
+    }
+  }
+
+  private async handleDeviceChallenge(
+    req: IncomingMessage,
+    res: ServerResponse,
+  ): Promise<void> {
+    const body = await readBody(req);
+    let parsed: { deviceId?: unknown };
+    try {
+      parsed = body ? (JSON.parse(body) as typeof parsed) : {};
+    } catch {
+      return sendJson(res, 400, { error: 'invalid JSON' });
+    }
+    const deviceId = typeof parsed.deviceId === 'string' ? parsed.deviceId : undefined;
+    const issued = this.config.devices!.issueChallenge(deviceId);
+    return sendJson(res, 200, issued);
+  }
+
+  private async handleDeviceAssert(
+    req: IncomingMessage,
+    res: ServerResponse,
+  ): Promise<void> {
+    const body = await readBody(req);
+    let parsed: {
+      deviceId?: unknown;
+      challenge?: unknown;
+      signature?: unknown;
+    };
+    try {
+      parsed = JSON.parse(body) as typeof parsed;
+    } catch {
+      return sendJson(res, 400, { error: 'invalid JSON' });
+    }
+    const deviceId = typeof parsed.deviceId === 'string' ? parsed.deviceId : '';
+    const challenge = typeof parsed.challenge === 'string' ? parsed.challenge : '';
+    const signatureHex = typeof parsed.signature === 'string' ? parsed.signature : '';
+    if (!deviceId || !challenge || !signatureHex) {
+      return sendJson(res, 400, {
+        error: 'deviceId, challenge, signature required',
+      });
+    }
+    try {
+      const { device } = this.config.devices!.consumeChallenge(challenge, deviceId);
+      const ok = verifyEd25519(
+        device.publicKeyHex,
+        Buffer.from(challenge, 'hex'),
+        Buffer.from(signatureHex, 'hex'),
+      );
+      if (!ok) return sendJson(res, 401, { error: 'bad signature' });
+      const { token, expiresAt } = this.config.devices!.issueSessionToken(deviceId);
+      return sendJson(res, 200, { token, expiresAt });
+    } catch (err) {
+      return sendJson(res, 400, { error: (err as Error).message });
+    }
+  }
+
+  // ─── Static webapp ────────────────────────────────────────────────────
+
+  private isWebappEnabled(): boolean {
+    const w = this.config.webapp;
+    if (!w) return false;
+    if (w.enabled === false) return false;
+    return existsSync(w.dir);
+  }
+
+  private handleUiAsset(pathname: string, res: ServerResponse): void {
+    const dir = this.config.webapp!.dir;
+    if (pathname === '/ui' || pathname === '/ui/') {
+      return sendFile(res, join(dir, 'index.html'));
+    }
+    // Strip the `/ui/` prefix and resolve under dir. `normalize` + prefix
+    // check defuses `..` traversal attempts.
+    const rel = pathname.slice('/ui/'.length);
+    const candidate = normalize(join(dir, rel));
+    const dirResolved = resolvePath(dir);
+    if (!candidate.startsWith(dirResolved)) {
+      return sendJson(res, 403, { error: 'forbidden' });
+    }
+    if (existsSync(candidate) && statSync(candidate).isFile()) {
+      return sendFile(res, candidate);
+    }
+    // SPA fallback: serve index.html so Lit's hash router can take over.
+    return sendFile(res, join(dir, 'index.html'));
+  }
+}
+
+function parseSubprotocols(header: string | string[] | undefined): string[] {
+  if (!header) return [];
+  const flat = Array.isArray(header) ? header.join(',') : header;
+  return flat
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function isUiPath(pathname: string): boolean {
+  return pathname === '/ui' || pathname.startsWith('/ui/');
+}
+
+// Raw ed25519 pubkey → Node KeyObject via SPKI DER wrapper. The 12-byte
+// prefix is the fixed SPKI SubjectPublicKeyInfo for ed25519.
+const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+
+function verifyEd25519(pubHex: string, message: Buffer, signature: Buffer): boolean {
+  try {
+    const raw = Buffer.from(pubHex, 'hex');
+    if (raw.length !== 32) return false;
+    const spki = Buffer.concat([ED25519_SPKI_PREFIX, raw]);
+    const key = createPublicKey({ key: spki, format: 'der', type: 'spki' });
+    return cryptoVerify(null, message, key, signature);
+  } catch {
+    return false;
+  }
+}
+
+function sendFile(res: ServerResponse, path: string): void {
+  if (!existsSync(path)) {
+    return sendJson(res, 404, { error: 'not found' });
+  }
+  res.writeHead(200, {
+    'Content-Type': contentTypeFor(path),
+    'Cache-Control': 'no-cache',
+  });
+  createReadStream(path).pipe(res);
+}
+
+const CONTENT_TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.map': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.txt': 'text/plain; charset=utf-8',
+};
+
+function contentTypeFor(path: string): string {
+  const ext = extname(path).toLowerCase();
+  return CONTENT_TYPES[ext] ?? 'application/octet-stream';
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {

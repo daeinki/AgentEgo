@@ -26,7 +26,13 @@ export { RpcServer } from './rpc/server.js';
 export type { RpcContext, RpcHandler, RpcServerOptions } from './rpc/server.js';
 
 export { buildRpcMethods } from './rpc/methods.js';
-export type { RpcDeps } from './rpc/methods.js';
+export type {
+  RpcDeps,
+  ChannelDescriptor,
+  ChannelRegistry,
+  CronTaskDescriptor,
+  CronRegistry,
+} from './rpc/methods.js';
 
 export { mountRpcOnGateway } from './lifecycle/foreground.js';
 export type { MountedGateway, MountRpcOptions } from './lifecycle/foreground.js';

@@ -1,0 +1,20 @@
+/**
+ * Additional design tokens beyond the base palette in src/styles.css.
+ * Extend per-component tokens here (e.g. chat bubble colors, phase-line fade
+ * durations) rather than hardcoding in individual Lit components.
+ */
+
+:root {
+  --chat-bubble-user-bg: var(--accent);
+  --chat-bubble-user-fg: var(--accent-fg);
+  --chat-bubble-assistant-bg: var(--bg-muted);
+  --chat-bubble-assistant-fg: var(--fg-primary);
+
+  --sidebar-width: 220px;
+  --header-height: 56px;
+  --footer-height: 28px;
+
+  --phase-line-fg: var(--fg-muted);
+  --phase-line-emphasis: var(--fg-accent);
+  --phase-line-fade-ms: 150ms;
+}

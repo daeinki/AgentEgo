@@ -2,6 +2,7 @@ import type { Contracts, EgoFullConfig, SessionPolicy, StandardMessage } from '@
 import type { ModelAdapter } from '@agent-platform/agent-worker';
 import {
   ApiGateway,
+  DeviceAuthStore,
   RuleRouter,
   SessionStore,
   type MessageHandler,
@@ -124,6 +125,18 @@ export interface PlatformConfig {
   gatewayAuthTokens?: string[];
   webchatPort?: number;
   webchatOwnerIds?: string[];
+  /**
+   * Path to a built webapp dist directory (Vite output of
+   * `packages/webapp`). When set, the gateway serves the SPA at `/ui/*`
+   * and exposes `/device/{enroll,challenge,assert}` for browser clients.
+   */
+  webappDir?: string;
+  /**
+   * Path to the device-auth JSON store (ed25519 pubkeys + session secret).
+   * Required when `webappDir` is provided; defaults to
+   * `<stateDir>/state/devices.json` at the CLI layer.
+   */
+  devicesFile?: string;
   telemetry?: {
     serviceName?: string;
     exporter?: 'console' | 'memory' | 'none';
@@ -504,6 +517,14 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
     }
   };
 
+  // Initialize device-auth whenever a store path is available. Previously this
+  // was gated on `webappDir` too, but the browser can also reach `/device/*`
+  // via a reverse proxy (e.g. `vite dev`) where the gateway itself doesn't
+  // serve the SPA — enrollment must still work in that case.
+  const devices = config.devicesFile
+    ? new DeviceAuthStore({ filePath: config.devicesFile })
+    : undefined;
+
   const gateway = new ApiGateway({
     port: config.gatewayPort ?? 0,
     ...(config.gatewayHost ? { host: config.gatewayHost } : {}),
@@ -512,6 +533,10 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
     router,
     sessions,
     handler,
+    ...(devices ? { devices } : {}),
+    ...(config.webappDir
+      ? { webapp: { dir: config.webappDir, enabled: true } }
+      : {}),
   });
   const gatewayPort = await gateway.start();
 

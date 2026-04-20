@@ -106,6 +106,7 @@ export async function gatewayStartCommand(options: GatewayStartOptions): Promise
     traceDbPath: paths.traceDb,
     defaultToolsConfig: resolveDefaultToolsConfig(paths.stateDir),
     skillInstallRoot: join(paths.stateDir, 'skills'),
+    devicesFile: join(paths.stateDir, 'state', 'devices.json'),
     ...(agentSystemPrompt ? { agentSystemPrompt } : {}),
   });
 

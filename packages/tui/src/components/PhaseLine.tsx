@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { formatPhase, type PhaseIndicator } from './StatusLine.js';
+import { formatPhase, type PhaseIndicator } from '@agent-platform/core';
 
 export type { PhaseIndicator };
 

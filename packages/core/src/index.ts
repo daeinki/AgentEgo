@@ -102,6 +102,8 @@ export type {
 export { DEFAULT_REASONING_BUDGET } from './schema/reasoning.js';
 export type { Phase, PhaseEvent, PhaseEventDetail } from './schema/phase.js';
 export { TERMINAL_PHASES, isTerminalPhase } from './schema/phase.js';
+export type { PhaseIndicator } from './schema/phase-format.js';
+export { formatPhase, PHASE_LABELS, PHASE_ICONS } from './schema/phase-format.js';
 
 // ─── Schemas (runtime validation objects, namespaced) ──────────────────────
 export * as Schemas from './schema/index.js';

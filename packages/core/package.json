@@ -8,6 +8,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./phase": {
+      "types": "./dist/schema/phase.d.ts",
+      "import": "./dist/schema/phase.js"
+    },
+    "./phase-format": {
+      "types": "./dist/schema/phase-format.d.ts",
+      "import": "./dist/schema/phase-format.js"
     }
   },
   "scripts": {

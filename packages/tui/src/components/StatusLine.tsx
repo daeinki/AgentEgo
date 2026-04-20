@@ -1,17 +1,13 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { Phase } from '@agent-platform/core';
 import type { RpcStatus } from '../hooks/useRpc.js';
 import { truncate } from '../lib/format.js';
 
-export interface PhaseIndicator {
-  phase: Phase;
-  elapsedMs: number;
-  toolName?: string;
-  stepIndex?: number;
-  totalSteps?: number;
-  attemptNumber?: number;
-}
+// ADR-010 §3.1.4.6 formatter lives in @agent-platform/core so the TUI and the
+// webapp render identical phase labels. Re-exported here for backwards
+// compatibility with existing imports (`./StatusLine`).
+export type { PhaseIndicator } from '@agent-platform/core';
+export { formatPhase } from '@agent-platform/core';
 
 interface Props {
   status: RpcStatus;
@@ -54,57 +50,3 @@ export function StatusLine({
     </Box>
   );
 }
-
-/**
- * Render a phase indicator per ADR-010 §3.1.4.6. Phase-only — no ETA, no
- * progress percentage, just "what kind of work + how long so far".
- */
-export function formatPhase(p: PhaseIndicator): string {
-  const secs = (p.elapsedMs / 1000).toFixed(1);
-  const label = PHASE_LABELS[p.phase] ?? p.phase;
-  const icon = PHASE_ICONS[p.phase] ?? '•';
-
-  if (p.phase === 'tool_call' && p.toolName) {
-    return `[${icon} ${p.toolName}] ${secs}s`;
-  }
-  if (p.phase === 'executing_step' && p.stepIndex !== undefined && p.totalSteps !== undefined) {
-    const tool = p.toolName ? ` ${p.toolName}` : '';
-    return `[${icon} ${p.stepIndex}/${p.totalSteps}${tool}] ${secs}s`;
-  }
-  if (p.phase === 'replan' && p.attemptNumber !== undefined) {
-    return `[${icon} replan #${p.attemptNumber}] ${secs}s`;
-  }
-  return `[${icon} ${label}] ${secs}s`;
-}
-
-const PHASE_LABELS: Record<Phase, string> = {
-  received: 'received',
-  ego_judging: 'ego',
-  reasoning_route: 'routing',
-  planning: 'planning',
-  executing_step: 'step',
-  tool_call: 'tool',
-  waiting_tool: 'waiting',
-  replan: 'replan',
-  streaming_response: 'streaming',
-  finalizing: 'finalizing',
-  complete: 'done',
-  aborted: 'aborted',
-  error: 'error',
-};
-
-const PHASE_ICONS: Record<Phase, string> = {
-  received: '◆',
-  ego_judging: '◉',
-  reasoning_route: '→',
-  planning: '◈',
-  executing_step: '▶',
-  tool_call: '🔧',
-  waiting_tool: '⋯',
-  replan: '↻',
-  streaming_response: '✎',
-  finalizing: '◌',
-  complete: '✓',
-  aborted: '✕',
-  error: '⚠',
-};
