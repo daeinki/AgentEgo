@@ -1,5 +1,7 @@
+import { existsSync } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { WebSocket } from 'ws';
 import type { Contracts, EgoFullConfig } from '@agent-platform/core';
 import type { DefaultToolsConfig } from '@agent-platform/agent-worker';
@@ -30,6 +32,8 @@ interface GatewayStartOptions {
   authToken?: string;
   detach?: boolean;
   foreground?: boolean;
+  webappDir?: string;
+  noWebapp?: boolean;
 }
 
 interface GatewayConnectOptions {
@@ -94,6 +98,8 @@ export async function gatewayStartCommand(options: GatewayStartOptions): Promise
     join(paths.stateDir, 'system-prompt.md'),
   );
 
+  const webappDir = options.noWebapp ? undefined : resolveWebappDir(options.webappDir);
+
   const platform = await startPlatform({
     sessionsDbPath: paths.sessionsDb,
     palaceRoot: paths.palaceRoot,
@@ -107,6 +113,7 @@ export async function gatewayStartCommand(options: GatewayStartOptions): Promise
     defaultToolsConfig: resolveDefaultToolsConfig(paths.stateDir),
     skillInstallRoot: join(paths.stateDir, 'skills'),
     devicesFile: join(paths.stateDir, 'state', 'devices.json'),
+    ...(webappDir ? { webappDir } : {}),
     ...(agentSystemPrompt ? { agentSystemPrompt } : {}),
   });
 
@@ -147,6 +154,15 @@ export async function gatewayStartCommand(options: GatewayStartOptions): Promise
   console.log(`  http   http://127.0.0.1:${platform.ports.gateway}`);
   console.log(`  ws     ws://127.0.0.1:${platform.ports.gateway}/ws   (webchat envelope)`);
   console.log(`  rpc    ws://127.0.0.1:${platform.ports.gateway}/rpc  (JSON-RPC 2.0)`);
+  if (webappDir) {
+    console.log(`  ui     http://127.0.0.1:${platform.ports.gateway}/ui/  (SPA — ${webappDir})`);
+  } else if (options.noWebapp) {
+    console.log(`  ui     (disabled via --no-webapp)`);
+  } else {
+    console.log(
+      `  ui     (not served — run 'pnpm --filter @agent-platform/webapp build' or pass --webapp-dir)`,
+    );
+  }
   console.log(`  auth   Bearer ${authToken}`);
   console.log(`[gateway] model: ${modelInfo.provider}/${modelInfo.model}`);
   const egoLlmInfo = egoLlm ? egoLlm.getModelInfo() : undefined;
@@ -424,6 +440,49 @@ async function loadOptionalSystemPrompt(path: string): Promise<string | undefine
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     throw err;
   }
+}
+
+/**
+ * Resolve the directory containing the built webapp SPA.
+ * Precedence: explicit `--webapp-dir` → `AGENT_WEBAPP_DIR` env var → auto-detect
+ * by walking up from this module to find `packages/webapp/dist/index.html`.
+ * Returns `undefined` when no dist is found; the gateway then skips `/ui/*`
+ * (browsers can still reach `/device/*` via a reverse proxy such as Vite dev).
+ */
+function resolveWebappDir(explicit: string | undefined): string | undefined {
+  if (explicit) {
+    if (!existsSync(join(explicit, 'index.html'))) {
+      console.error(
+        `[gateway] --webapp-dir '${explicit}' has no index.html — refusing to serve /ui/*.`,
+      );
+      process.exit(1);
+    }
+    return explicit;
+  }
+
+  const envDir = process.env['AGENT_WEBAPP_DIR'];
+  if (envDir) {
+    if (!existsSync(join(envDir, 'index.html'))) {
+      console.error(
+        `[gateway] AGENT_WEBAPP_DIR='${envDir}' has no index.html — refusing to serve /ui/*.`,
+      );
+      process.exit(1);
+    }
+    return envDir;
+  }
+
+  // Walk up from this module until we hit `packages/webapp/dist/index.html`.
+  // Covers both dev (tsx loads packages/cli/src/commands/gateway.ts) and
+  // built (packages/cli/dist/commands/gateway.js) layouts.
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 8; i++) {
+    const candidate = join(dir, 'packages', 'webapp', 'dist', 'index.html');
+    if (existsSync(candidate)) return dirname(candidate);
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return undefined;
 }
 
 function splitRoots(value: string | undefined): string[] | undefined {

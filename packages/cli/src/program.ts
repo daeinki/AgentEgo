@@ -68,6 +68,11 @@ gateway
   .option('--auth-token <token>', 'Bearer token required by clients')
   .option('--detach', 'Fork a background daemon and return (foreground otherwise)')
   .option('--foreground', 'Explicitly run in foreground (default; used by detach children)')
+  .option(
+    '--webapp-dir <path>',
+    'Directory of a built webapp SPA to serve at /ui/* (defaults to auto-detecting packages/webapp/dist; also honours AGENT_WEBAPP_DIR)',
+  )
+  .option('--no-webapp', 'Do not serve the webapp at /ui/* even if a built dist is available')
   .action(gatewayStartCommand);
 
 gateway
