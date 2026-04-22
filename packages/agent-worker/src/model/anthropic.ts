@@ -16,7 +16,9 @@ export interface AnthropicConfig {
 
 // Rough pricing per 1M tokens (USD)
 const PRICING: Record<string, { input: number; output: number }> = {
-  'claude-sonnet-4-20250514': { input: 3, output: 15 },
+  'claude-opus-4-7': { input: 5, output: 25 },
+  'claude-opus-4-6': { input: 5, output: 25 },
+  'claude-sonnet-4-6': { input: 3, output: 15 },
   'claude-haiku-4-5-20251001': { input: 0.8, output: 4 },
 };
 
@@ -27,7 +29,7 @@ export class AnthropicAdapter implements ModelAdapter {
 
   constructor(config: AnthropicConfig) {
     this.client = new Anthropic({ apiKey: config.apiKey });
-    this.model = config.model ?? 'claude-sonnet-4-20250514';
+    this.model = config.model ?? 'claude-opus-4-7';
     this.defaultMaxTokens = config.defaultMaxTokens ?? 4096;
   }
 
@@ -41,8 +43,15 @@ export class AnthropicAdapter implements ModelAdapter {
     const params: Anthropic.MessageCreateParams = {
       model: this.model,
       max_tokens: request.maxTokens ?? this.defaultMaxTokens,
-      temperature: request.temperature ?? 0.7,
-      system: request.systemPrompt,
+      // Agentic tool-use flow benefits from higher effort on Opus 4.7.
+      output_config: { effort: 'high' },
+      system: [
+        {
+          type: 'text',
+          text: request.systemPrompt,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
       messages,
       ...(tools && tools.length > 0 ? { tools } : {}),
     };

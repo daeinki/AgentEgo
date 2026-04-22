@@ -18,7 +18,7 @@
     "@agent-platform/control-plane": "workspace:*",
     "@agent-platform/core": "workspace:*",
     "@agent-platform/skills": "workspace:*",
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.88.0",
     "openai": "^6.34.0"
   },
   "devDependencies": {

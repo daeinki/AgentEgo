@@ -8,7 +8,9 @@ type EgoThinkingRequest = Contracts.EgoThinkingRequest;
 
 const PRICING: Record<string, { inputPerMillion: number; outputPerMillion: number }> = {
   'claude-haiku-4-5-20251001': { inputPerMillion: 0.8, outputPerMillion: 4 },
-  'claude-sonnet-4-20250514': { inputPerMillion: 3, outputPerMillion: 15 },
+  'claude-sonnet-4-6': { inputPerMillion: 3, outputPerMillion: 15 },
+  'claude-opus-4-6': { inputPerMillion: 5, outputPerMillion: 25 },
+  'claude-opus-4-7': { inputPerMillion: 5, outputPerMillion: 25 },
 };
 
 /**
@@ -20,8 +22,6 @@ export class AnthropicEgoLlmAdapter implements EgoLlmAdapter {
   private client!: Anthropic;
   private model!: string;
   private maxTokens = 1024;
-  private temperature = 0.1;
-  private topP?: number;
   private readonly providerLabel = 'anthropic';
 
   async initialize(config: EgoLlmConfig): Promise<void> {
@@ -31,8 +31,8 @@ export class AnthropicEgoLlmAdapter implements EgoLlmAdapter {
     });
     this.model = config.model;
     this.maxTokens = config.maxTokens;
-    this.temperature = config.temperature;
-    if (config.topP !== undefined) this.topP = config.topP;
+    // Opus 4.7 rejects `temperature` / `top_p` / `top_k`; config fields for
+    // those are honored by the OpenAI adapter only.
   }
 
   getModelInfo(): { provider: string; model: string; isFallback: boolean } {
@@ -56,9 +56,12 @@ export class AnthropicEgoLlmAdapter implements EgoLlmAdapter {
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: this.maxTokens,
-      temperature: this.temperature,
-      ...(this.topP !== undefined ? { top_p: this.topP } : {}),
-      system: req.systemPrompt,
+      // EGO is latency-sensitive classification, not agentic reasoning.
+      output_config: { effort: 'low' },
+      // Cache the (stable) system prompt; EGO reuses it every turn.
+      system: [
+        { type: 'text', text: req.systemPrompt, cache_control: { type: 'ephemeral' } },
+      ],
       messages: [
         {
           role: 'user',
@@ -70,7 +73,7 @@ export class AnthropicEgoLlmAdapter implements EgoLlmAdapter {
   }
 }
 
-function extractTextBlock(response: Anthropic.Messages.Message): string | null {
+function extractTextBlock(response: Anthropic.Message): string | null {
   for (const block of response.content) {
     if (block.type === 'text' && typeof block.text === 'string') return block.text;
   }
