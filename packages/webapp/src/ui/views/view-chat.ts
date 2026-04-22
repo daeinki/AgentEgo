@@ -67,13 +67,6 @@ export class ViewChatEl extends LitElement {
   `;
 
   override render() {
-    // eslint-disable-next-line no-console
-    console.log(
-      '[view-chat] render, turns:',
-      this.turns.length,
-      'last text len:',
-      this.turns[this.turns.length - 1]?.text?.length,
-    );
     const sessionLabel = this.sessionId
       ? `session:${this.sessionId.slice(0, 12)}`
       : 'session:(new)';

@@ -1,5 +1,6 @@
 import { LitElement, css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { renderMarkdown } from '../../markdown.js';
 
 @customElement('chat-bubble')
@@ -87,15 +88,6 @@ export class ChatBubbleEl extends LitElement {
   }
 
   override render() {
-    // eslint-disable-next-line no-console
-    console.log(
-      '[bubble] render role:',
-      this.role,
-      'text len:',
-      this.text.length,
-      'streaming:',
-      this.streaming,
-    );
     const meta =
       this.role === 'user' ? 'You' : this.role === 'assistant' ? 'Assistant' : 'System';
     const renderedHtml =
@@ -105,7 +97,7 @@ export class ChatBubbleEl extends LitElement {
         <div class="meta">${meta}</div>
         <div class="bubble ${this.streaming ? 'streaming' : ''}">
           ${renderedHtml !== null
-            ? html`<div .innerHTML=${renderedHtml}></div>`
+            ? html`<div>${unsafeHTML(renderedHtml)}</div>`
             : html`${this.text}`}
         </div>
       </div>

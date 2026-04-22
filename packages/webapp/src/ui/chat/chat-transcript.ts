@@ -30,13 +30,6 @@ export class ChatTranscriptEl extends LitElement {
   }
 
   override render() {
-    // eslint-disable-next-line no-console
-    console.log(
-      '[transcript] render, turns:',
-      this.turns.length,
-      'last text len:',
-      this.turns[this.turns.length - 1]?.text?.length,
-    );
     if (this.turns.length === 0) {
       return html`<div class="empty">No messages yet — type below to start.</div>`;
     }

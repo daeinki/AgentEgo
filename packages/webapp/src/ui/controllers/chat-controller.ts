@@ -49,18 +49,11 @@ export class ChatController implements ReactiveController {
   hostConnected(): void {
     this.unsubDelta = this.gateway.onNotification('chat.delta', (raw) => {
       const p = raw as { text?: string } | undefined;
-      // eslint-disable-next-line no-console
-      console.log('[chat] delta received:', JSON.stringify(p), 'streamingId:', this.streamingId);
       if (!this.streamingId || typeof p?.text !== 'string') return;
       const delta = p.text;
       const streamingId = this.streamingId;
       this.turns = this.turns.map((t) =>
         t.id === streamingId ? { ...t, text: t.text + delta } : t,
-      );
-      // eslint-disable-next-line no-console
-      console.log(
-        '[chat] after delta, turn text len:',
-        this.turns.find((t) => t.id === streamingId)?.text.length,
       );
       this.host.requestUpdate();
     });
