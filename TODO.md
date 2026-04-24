@@ -10,7 +10,7 @@
 - 🟢 **#3 `agent device {list,revoke}` CLI** — `packages/cli/src/commands/device.ts` 신규; `device list [--json]` 테이블/JSON 두 형식, `device revoke <deviceId>` 즉시 무효화. `DeviceAuthStore` 직접 사용 (gateway 실행 불필요, devices.json 만 읽음). 커밋 `6e728ac`.
 - 🟢 **#4 replan 트리거 #3 (egoRelevance>0.8 + goalUpdates)** — EGO `cognition` + `goalUpdates` 를 metadata → `ReasoningContext.egoCognition/goalUpdates` 로 전달. `PlanExecuteExecutor` 가 초기 plan 생성 직후 조건 충족 시 재계획 1회 발화 (reason=`goal_updates_high_relevance`, `replanLimit` 공유). 단위 테스트 5건 신규 추가, 전체 agent-worker suite 116 tests green. 커밋 `c88aba0`.
 - 🟢 **#5 ChannelRegistry 구현 (option a)** — `PlatformChannelRegistry` 신규 (`packages/control-plane/src/gateway/`). register/deregister + recordEvent/recordError/updateSessionCount/refreshHealth. platform.ts 가 WebChat 부팅 시 등록, onMessage/catch 에서 이벤트·에러 피드. `channels.list/status` RPC 가 실 데이터 반환. 단위 테스트 9건. 커밋 `a93b65a`.
-- 📋 **#6 Scheduler / CronRegistry (진행 예정)** — `node-cron` 도입 OK 확정. 작업 타입 스코프 확인 대기 중.
+- 🟢 **#6 Scheduler / CronRegistry 구현 (option B)** — `packages/scheduler/` 신규 (node-cron + workflow deps). CronTask discriminated union (chat/bash/workflow) + TaskRunner 인터페이스. ChatTaskRunner 는 platform handler 직접 호출 (EGO 자동 경유), BashTaskRunner 는 ToolSandbox + ownerPolicy 경유, WorkflowTaskRunner 는 executeWorkflow 래핑. tasks.json JSON5 스타일, 단일동시성 (in-flight 는 skip/runNow 거절), log-and-continue. `cron.list/runNow` RPC 가 실 데이터 반환. 단위 테스트 22건. 커밋 `d05a7c0`.
 
 ---
 
@@ -56,8 +56,8 @@
 │  │  └─ ❌ `agent device {list,revoke}` CLI — 수동 편집만 가능             │   │
 │  │                                                                        │   │
 │  │ [C1] RuleRouter ✅       [C2] SessionStore (sessions.db) ✅            │   │
-│  │ [C2'] ChannelRegistry ⚠️  ← interface만, 실제 집계 미구현              │   │
-│  │ [C2''] CronRegistry    ⚠️  ← interface만, Scheduler 구현체 없음        │   │
+│  │ [C2'] ChannelRegistry ✅  (PlatformChannelRegistry, WebChat 등록 중)   │   │
+│  │ [C2''] CronRegistry    ✅  (SchedulerService, 3 runner: chat/bash/wf) │   │
 │  └───────────────────────────┬────────────────────────────────────────────┘   │
 └──────────────────────────────┼────────────────────────────────────────────────┘
                                │
@@ -162,7 +162,7 @@
 │                  곁가지 패키지 (보조 · 실행기)                                │
 │  [device-node] WS 프로토콜(페어링/하트비트/푸시) ✅                           │
 │  [workflow]    선언적 DSL 인터프리터 ✅  ⚠️ 함수·에러핸들러 없음              │
-│  [scheduler]   ❌ CronRegistry 실구현 없음 (interface만)                      │
+│  [scheduler]   ✅ node-cron + chat/bash/workflow runner, tasks.json          │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -186,7 +186,8 @@
 | 채널 5개 | `packages/channels/*` | ✅ / 일부 ⚠️ |
 | Workflow | `packages/workflow` | ⚠️ |
 | Device-node | `packages/device-node` | ✅ |
-| **ChannelRegistry / CronRegistry / Scheduler** | — | ❌ |
+| ChannelRegistry | `packages/control-plane/src/gateway/platform-channel-registry.ts` | ✅ |
+| Scheduler / CronRegistry | `packages/scheduler` | ✅ |
 
 ---
 
@@ -197,10 +198,7 @@
 - [x] ~~webapp `/ui/*` 자동 배선~~ — 🟢 완료 (커밋 `009e54a`). `agent gateway start` 가 `--webapp-dir` → `AGENT_WEBAPP_DIR` → `packages/webapp/dist` 자동 탐지 순으로 resolve
 - [x] ~~webapp chat delta 스트리밍 즉시 렌더 안 되는 버그 수정~~ — 🟢 코드 변경 적용 (커밋 `e656b2f`). `.innerHTML` → Lit `unsafeHTML` 디렉티브, 진단용 `console.log` 제거. **브라우저 실렌더 검증 필요** (제 환경에서 브라우저 실행 불가 — 사용자 환경에서 확인 요망)
 - [x] ~~`ChannelRegistry` 실구현~~ — 🟢 option (a) 완료 (커밋 `a93b65a`). `PlatformChannelRegistry` in `packages/control-plane/src/gateway/platform-channel-registry.ts`. 이벤트/에러 기반 status 파생 + `refreshHealth(id)` 온디맨드. 현재 WebChat 1개 등록; Telegram/Slack/Discord/WhatsApp 은 platform 기동 로직이 생기면 동일 패턴으로 register 한 줄씩 추가
-- [ ] `CronRegistry` + Scheduler 실구현 — RPC `cron.list/runNow` 빈 리스트. 스케줄러 구현체 없음
-  - 추천: `node-cron` (MIT, 0 deps, ~4KB) + JSON 작업 정의 (`<stateDir>/scheduler/tasks.json`) + 인메모리 실행 이력 (재시작 시 초기화, 영구 보존은 추후 SQLite 로 승급)
-  - 패키지 신규 (`packages/scheduler/`). 첫 버전 작업 타입은 **에이전트 채팅 턴 디스패치 1종** 으로 좁힘 (bash/webhook 은 별도 PR)
-  - `CronTask` 타입은 `@agent-platform/core/contracts` 로 승급해 공용화
+- [x] ~~`CronRegistry` + Scheduler 실구현~~ — 🟢 option B 완료 (커밋 `d05a7c0`). `packages/scheduler/` 신규. 3 runner (chat/bash/workflow), node-cron 스케줄, tasks.json JSON5. v1 스코프: RPC mutation 없음 (재시작으로 반영), 실행 이력 인메모리, log-and-continue 실패 정책
 - [x] ~~`agent device {list,revoke}` CLI~~ — 🟢 완료. `packages/cli/src/commands/device.ts`; `list` 는 `deviceId · name · enrolledAt · lastSeenAt` 테이블 (또는 `--json`), `revoke <id>` 는 즉시 삭제 + 세션 토큰 무효화 (기존 토큰은 `verifySessionToken` 에서 `device revoked` 로 거절)
 - [ ] 배포 매니페스트 — 타깃 결정 필요: Docker compose / Kubernetes / Helm 중 어느 것(들)?
 - [ ] 환경 변수 관리 — 타깃 결정 필요: Vault / AWS Secrets Manager / GCP Secret Manager / SOPS / dotenv 만 중 어느 것?
