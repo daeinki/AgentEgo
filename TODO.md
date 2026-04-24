@@ -9,8 +9,8 @@
 - 🟢 **#2 webapp chat delta 스트리밍** — `.innerHTML` 프로퍼티 바인딩을 Lit `unsafeHTML` 디렉티브로 교체, 진단용 `console.log` 4곳(`chat-bubble` / `chat-transcript` / `view-chat` / `chat-controller`) 제거. 커밋 `e656b2f`. **주의**: 브라우저 실렌더 검증은 사용자 환경에서 아직 미확인.
 - 🟢 **#3 `agent device {list,revoke}` CLI** — `packages/cli/src/commands/device.ts` 신규; `device list [--json]` 테이블/JSON 두 형식, `device revoke <deviceId>` 즉시 무효화. `DeviceAuthStore` 직접 사용 (gateway 실행 불필요, devices.json 만 읽음). 커밋 `6e728ac`.
 - 🟢 **#4 replan 트리거 #3 (egoRelevance>0.8 + goalUpdates)** — EGO `cognition` + `goalUpdates` 를 metadata → `ReasoningContext.egoCognition/goalUpdates` 로 전달. `PlanExecuteExecutor` 가 초기 plan 생성 직후 조건 충족 시 재계획 1회 발화 (reason=`goal_updates_high_relevance`, `replanLimit` 공유). 단위 테스트 5건 신규 추가, 전체 agent-worker suite 116 tests green. 커밋 `c88aba0`.
-- 📋 **#5 ChannelRegistry 방향 결정 (대기)** — 추천: (a) `PlatformChannelRegistry` 래퍼 (`packages/control-plane/src/gateway/`). `ChannelAdapter.healthCheck()` 이미 존재 → status 파생 가능, 5개 어댑터 breaking 없음. (b) 컨트랙트에 `getInfo/getStatus` 추가는 일괄 수정 비용, (c) config-file 은 런타임 상태 반영 안됨. 예상 ~60줄 + 배선 2-3줄.
-- 📋 **#6 Scheduler / CronRegistry 방향 결정 (대기)** — 추천: `node-cron` (0 deps, ~4KB) + JSON 작업 정의 (`<stateDir>/scheduler/tasks.json`) + 인메모리 실행 이력 (프로세스 재시작 시 초기화). 첫 버전 작업 타입은 "에이전트 채팅 턴 디스패치 1종" 만. 패키지 신규 생성 (`packages/scheduler/`). `runNow` 지원. 예상 ~200-250줄.
+- 🟢 **#5 ChannelRegistry 구현 (option a)** — `PlatformChannelRegistry` 신규 (`packages/control-plane/src/gateway/`). register/deregister + recordEvent/recordError/updateSessionCount/refreshHealth. platform.ts 가 WebChat 부팅 시 등록, onMessage/catch 에서 이벤트·에러 피드. `channels.list/status` RPC 가 실 데이터 반환. 단위 테스트 9건. 커밋 `a93b65a`.
+- 📋 **#6 Scheduler / CronRegistry (진행 예정)** — `node-cron` 도입 OK 확정. 작업 타입 스코프 확인 대기 중.
 
 ---
 
@@ -196,10 +196,7 @@
 
 - [x] ~~webapp `/ui/*` 자동 배선~~ — 🟢 완료 (커밋 `009e54a`). `agent gateway start` 가 `--webapp-dir` → `AGENT_WEBAPP_DIR` → `packages/webapp/dist` 자동 탐지 순으로 resolve
 - [x] ~~webapp chat delta 스트리밍 즉시 렌더 안 되는 버그 수정~~ — 🟢 코드 변경 적용 (커밋 `e656b2f`). `.innerHTML` → Lit `unsafeHTML` 디렉티브, 진단용 `console.log` 제거. **브라우저 실렌더 검증 필요** (제 환경에서 브라우저 실행 불가 — 사용자 환경에서 확인 요망)
-- [ ] `ChannelRegistry` 실구현 — RPC `channels.list/status` 가 현재 빈 리스트 반환. 구현 방향 결정 필요:
-  - (a) **[추천]** `platform.ts` 에서 기동한 채널 인스턴스 자동 집계. `PlatformChannelRegistry` wrapper 가 `ChannelAdapter.healthCheck()` 결과로 status 파생 — 5개 어댑터 **breaking 없음**
-  - (b) `ChannelAdapter` 컨트랙트에 `getInfo()/getStatus()` 추가 (5개 채널 전부 업데이트, breaking)
-  - (c) 별도 `ChannelRegistryStore` 가 설정 파일 읽기 — 런타임 상태 반영 못 함
+- [x] ~~`ChannelRegistry` 실구현~~ — 🟢 option (a) 완료 (커밋 `a93b65a`). `PlatformChannelRegistry` in `packages/control-plane/src/gateway/platform-channel-registry.ts`. 이벤트/에러 기반 status 파생 + `refreshHealth(id)` 온디맨드. 현재 WebChat 1개 등록; Telegram/Slack/Discord/WhatsApp 은 platform 기동 로직이 생기면 동일 패턴으로 register 한 줄씩 추가
 - [ ] `CronRegistry` + Scheduler 실구현 — RPC `cron.list/runNow` 빈 리스트. 스케줄러 구현체 없음
   - 추천: `node-cron` (MIT, 0 deps, ~4KB) + JSON 작업 정의 (`<stateDir>/scheduler/tasks.json`) + 인메모리 실행 이력 (재시작 시 초기화, 영구 보존은 추후 SQLite 로 승급)
   - 패키지 신규 (`packages/scheduler/`). 첫 버전 작업 타입은 **에이전트 채팅 턴 디스패치 1종** 으로 좁힘 (bash/webhook 은 별도 PR)
