@@ -9,6 +9,16 @@ export interface HybridWeights {
   structureBoost: number;
 }
 
+/**
+ * Internal-facing result shape: `result` is the contract-level
+ * `MemorySearchResult`, `chunkId` is the underlying row id so callers that
+ * need to record access (e.g. `PalaceMemorySystem`) don't have to re-query.
+ */
+export interface HybridSearchHit {
+  chunkId: string;
+  result: MemorySearchResult;
+}
+
 const DEFAULT_WEIGHTS: HybridWeights = {
   bm25: 0.45,
   vector: 0.45,
@@ -18,19 +28,16 @@ const DEFAULT_WEIGHTS: HybridWeights = {
 const BM25_CANDIDATES = 50;
 
 /**
- * Hybrid search: BM25 (FTS5) ∪ vector cosine → normalize → weighted combine →
- * rank → filter by `minRelevanceScore`.
- *
- * Structure boost: chunks whose wing is listed in `preferredWings` get a small
- * bump, reflecting that "when we're in work mode, prefer work-wing memories".
+ * Like `hybridSearch` but returns `HybridSearchHit[]` so callers can correlate
+ * each result with its underlying `chunkId` (needed for access logging).
  */
-export async function hybridSearch(
+export async function hybridSearchDetailed(
   query: string,
   ctx: SearchContext,
   store: MemoryChunkStore,
   embedder: EmbeddingProvider,
   weightsOverride?: Partial<HybridWeights>,
-): Promise<MemorySearchResult[]> {
+): Promise<HybridSearchHit[]> {
   const weights = { ...DEFAULT_WEIGHTS, ...weightsOverride };
 
   const bm25Results = store.bm25Search(query, BM25_CANDIDATES);
@@ -86,22 +93,40 @@ export async function hybridSearch(
     .filter((s) => s.combined >= ctx.minRelevanceScore)
     .slice(0, ctx.maxResults)
     .map(({ chunk, bm25, vector, structureBoost, combined }) => ({
-      content: chunk.content,
-      source: {
-        wing: chunk.wing,
-        file: chunk.filePath,
-        lineRange: [chunk.lineStart, chunk.lineEnd] as [number, number],
-      },
-      relevance: {
-        bm25Score: bm25,
-        vectorScore: vector,
-        structureBoost,
-        combinedScore: combined,
-      },
-      metadata: {
-        createdAt: new Date(chunk.createdAt).toISOString(),
-        lastAccessedAt: new Date(chunk.lastAccessed ?? chunk.createdAt).toISOString(),
-        accessCount: chunk.accessCount,
+      chunkId: chunk.id,
+      result: {
+        content: chunk.content,
+        source: {
+          wing: chunk.wing,
+          file: chunk.filePath,
+          lineRange: [chunk.lineStart, chunk.lineEnd] as [number, number],
+        },
+        relevance: {
+          bm25Score: bm25,
+          vectorScore: vector,
+          structureBoost,
+          combinedScore: combined,
+        },
+        metadata: {
+          createdAt: new Date(chunk.createdAt).toISOString(),
+          lastAccessedAt: new Date(chunk.lastAccessed ?? chunk.createdAt).toISOString(),
+          accessCount: chunk.accessCount,
+        },
       },
     }));
+}
+
+/**
+ * Backward-compatible wrapper returning only `MemorySearchResult[]` — preferred
+ * for external callers that just need the ranked contract-shaped results.
+ */
+export async function hybridSearch(
+  query: string,
+  ctx: SearchContext,
+  store: MemoryChunkStore,
+  embedder: EmbeddingProvider,
+  weightsOverride?: Partial<HybridWeights>,
+): Promise<MemorySearchResult[]> {
+  const hits = await hybridSearchDetailed(query, ctx, store, embedder, weightsOverride);
+  return hits.map((h) => h.result);
 }

@@ -25,8 +25,8 @@ export { chunkText, estimateTokenCount } from './ingest/chunker.js';
 export { classifyContent, classifyAsResult } from './ingest/pipeline.js';
 export type { ClassificationMatch } from './ingest/classifier.js';
 
-export { hybridSearch } from './search/hybrid.js';
-export type { HybridWeights } from './search/hybrid.js';
+export { hybridSearch, hybridSearchDetailed } from './search/hybrid.js';
+export type { HybridWeights, HybridSearchHit } from './search/hybrid.js';
 
 export { appendWingEntry, lineRangeFor } from './palace/writer.js';
 

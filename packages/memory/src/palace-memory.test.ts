@@ -131,4 +131,79 @@ describe('PalaceMemorySystem', () => {
       }),
     ).rejects.toThrow(/not initialized/);
   });
+
+  it('search() bumps access_count + inserts memory_access_log rows by default', async () => {
+    await mem.ingest({
+      sessionId: 'sess-log',
+      userMessage: 'TypeScript 배포 파이프라인',
+      agentResponse: 'GitHub Actions와 Docker로 프로덕션 배포 자동화.',
+      timestamp: Date.now(),
+    });
+
+    const results = await mem.search('TypeScript 배포', {
+      sessionId: 'sess-log',
+      agentId: 'a-log',
+      recentTopics: [],
+      maxResults: 3,
+      minRelevanceScore: 0,
+    });
+    expect(results.length).toBeGreaterThan(0);
+
+    // Inspect the palace DB directly — access log rows should exist and
+    // match the number of returned results. access_count should be ≥ 1 on
+    // each returned chunk.
+    const { DatabaseSync } = await import('node:sqlite');
+    const db = new DatabaseSync(resolve(dir, 'palace.db'), { readOnly: true });
+    try {
+      const logRows = db
+        .prepare('SELECT chunk_id, session_id, query FROM memory_access_log ORDER BY id')
+        .all() as Array<{ chunk_id: string; session_id: string; query: string }>;
+      expect(logRows.length).toBe(results.length);
+      for (const row of logRows) {
+        expect(row.session_id).toBe('sess-log');
+        expect(row.query).toBe('TypeScript 배포');
+      }
+      const counts = db
+        .prepare('SELECT access_count FROM memory_chunks WHERE access_count > 0')
+        .all() as Array<{ access_count: number }>;
+      expect(counts.length).toBe(results.length);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('search() skips access logging when AGENT_MEMORY_ACCESS_LOG=0', async () => {
+    const prev = process.env['AGENT_MEMORY_ACCESS_LOG'];
+    process.env['AGENT_MEMORY_ACCESS_LOG'] = '0';
+    try {
+      await mem.ingest({
+        sessionId: 'sess-off',
+        userMessage: '배포',
+        agentResponse: 'GitHub Actions 배포 자동화',
+        timestamp: Date.now(),
+      });
+      const results = await mem.search('배포', {
+        sessionId: 'sess-off',
+        agentId: 'a',
+        recentTopics: [],
+        maxResults: 3,
+        minRelevanceScore: 0,
+      });
+      expect(results.length).toBeGreaterThan(0);
+
+      const { DatabaseSync } = await import('node:sqlite');
+      const db = new DatabaseSync(resolve(dir, 'palace.db'), { readOnly: true });
+      try {
+        const logRows = db
+          .prepare('SELECT id FROM memory_access_log')
+          .all() as Array<{ id: number }>;
+        expect(logRows.length).toBe(0);
+      } finally {
+        db.close();
+      }
+    } finally {
+      if (prev === undefined) delete process.env['AGENT_MEMORY_ACCESS_LOG'];
+      else process.env['AGENT_MEMORY_ACCESS_LOG'] = prev;
+    }
+  });
 });

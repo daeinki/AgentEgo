@@ -11,7 +11,7 @@ import { MemoryChunkStore } from './db/store.js';
 import { HashEmbedder } from './embedding/hash-embedder.js';
 import type { EmbeddingProvider } from './embedding/types.js';
 import { classifyAsResult, ingestTurn } from './ingest/pipeline.js';
-import { hybridSearch, type HybridWeights } from './search/hybrid.js';
+import { hybridSearchDetailed, type HybridWeights } from './search/hybrid.js';
 import type { LlmCompactor } from './llm-compactor.js';
 import {
   ensurePalaceLayout,
@@ -75,13 +75,17 @@ export class PalaceMemorySystem implements MemorySystem {
 
   async search(query: string, ctx: SearchContext): Promise<MemorySearchResult[]> {
     this.assertReady();
-    const results = await hybridSearch(query, ctx, this.store, this.embedder, this.hybridWeights);
-    // Record access for the returned chunks so that future ranking can learn.
-    for (const r of results) {
-      const chunkLookup = this.store.bm25Search(query, 1);
-      void chunkLookup; // no-op; keep access log simple for now
+    const hits = await hybridSearchDetailed(query, ctx, this.store, this.embedder, this.hybridWeights);
+    // Access logging: bump each returned chunk's access_count + append a
+    // memory_access_log row. Enabled by default; `AGENT_MEMORY_ACCESS_LOG=0`
+    // (or `='false'` / `='off'`) disables — useful when a caller wants read
+    // traffic that doesn't perturb ranking signals.
+    if (isAccessLoggingEnabled()) {
+      for (const { chunkId, result } of hits) {
+        this.store.recordAccess(chunkId, ctx.sessionId, query, result.relevance.combinedScore);
+      }
     }
-    return results;
+    return hits.map((h) => h.result);
   }
 
   async ingest(turn: ConversationTurn): Promise<IngestResult> {
@@ -181,4 +185,17 @@ export class PalaceMemorySystem implements MemorySystem {
     }
     void nowMs;
   }
+}
+
+/**
+ * `AGENT_MEMORY_ACCESS_LOG` semantics: default on; `='0' | 'false' | 'off' |
+ * 'no'` (case-insensitive) turns logging off. Anything else including the env
+ * var being unset leaves logging enabled — replacing the pre-v0.7 stub that
+ * never recorded access.
+ */
+function isAccessLoggingEnabled(): boolean {
+  const raw = process.env['AGENT_MEMORY_ACCESS_LOG'];
+  if (raw === undefined) return true;
+  const v = raw.trim().toLowerCase();
+  return !(v === '0' || v === 'false' || v === 'off' || v === 'no');
 }
