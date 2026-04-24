@@ -138,6 +138,7 @@ export async function gatewayStartCommand(options: GatewayStartOptions): Promise
       // `chat.delta` notifications in gateway-cli's chat.send method).
       handler: platform.handler,
       traceLogger: platform.traceLogger,
+      channels: platform.channels,
       version: '0.1.0',
       ports: platform.ports,
     },

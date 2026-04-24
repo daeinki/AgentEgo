@@ -3,6 +3,7 @@ import type { ModelAdapter } from '@agent-platform/agent-worker';
 import {
   ApiGateway,
   DeviceAuthStore,
+  PlatformChannelRegistry,
   RuleRouter,
   SessionStore,
   type MessageHandler,
@@ -165,6 +166,12 @@ export interface PlatformHandles {
   runner: AgentRunner;
   gateway: ApiGateway;
   webchat: WebChatAdapter;
+  /**
+   * Registry of running channel adapters. Powers RPC `channels.list` /
+   * `channels.status`. Gateway-cli's `RpcDeps.channels` accepts this
+   * directly (structurally-compatible `list()`/`get()` shape).
+   */
+  channels: PlatformChannelRegistry;
   metrics: InMemoryMetricsSink;
   /**
    * The same handler wired into ApiGateway. Exposed so alternate entry points
@@ -545,6 +552,8 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
   });
   const gatewayPort = await gateway.start();
 
+  const channels = new PlatformChannelRegistry();
+
   const webchat = new WebChatAdapter();
   const webchatConfig = {
     type: 'webchat' as const,
@@ -553,10 +562,12 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
     ...(config.webchatOwnerIds ? { ownerIds: config.webchatOwnerIds } : {}),
   };
   await webchat.initialize(webchatConfig);
+  channels.register('webchat', 'webchat', webchat);
 
   // Wire webchat → handler. When a browser message arrives, route it, invoke
   // the same handler the HTTP/WS gateway uses, and stream deltas back.
   webchat.onMessage((msg) => {
+    channels.recordEvent('webchat', msg.timestamp);
     void (async () => {
       try {
         const route = await router.route(msg);
@@ -569,9 +580,11 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
         });
         webchat.emitDone(msg.conversation.id, msg.traceId);
       } catch (err) {
+        const errMsg = (err as Error).message;
+        channels.recordError('webchat', errMsg);
         await webchat.sendMessage(msg.conversation.id, {
           type: 'text',
-          text: `[error] ${(err as Error).message}`,
+          text: `[error] ${errMsg}`,
         });
       }
     })();
@@ -590,11 +603,13 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
     runner,
     gateway,
     webchat,
+    channels,
     metrics,
     traceLogger,
     handler,
     ports: { gateway: gatewayPort, webchat: webchatPort },
     async shutdown() {
+      channels.deregister('webchat');
       await webchat.shutdown();
       await gateway.stop();
       await audit.close();

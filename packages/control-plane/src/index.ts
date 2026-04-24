@@ -28,3 +28,5 @@ export {
   parseInbound,
   encodeOutbound,
 } from './gateway/envelope.js';
+export { PlatformChannelRegistry } from './gateway/platform-channel-registry.js';
+export type { ChannelDescriptor } from './gateway/platform-channel-registry.js';
