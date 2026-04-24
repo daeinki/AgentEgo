@@ -3,9 +3,16 @@ import type { ModelAdapter } from '../model/types.js';
 import { ReactExecutor, type ReactExecutorConfig, type ReactExecutorDeps } from './react-executor.js';
 import { PlanExecuteExecutor, type PlanExecuteConfig } from './plan-execute-executor.js';
 import { DefaultComplexityRouter } from './complexity-router.js';
+import type { StepMatcher } from './step-matcher.js';
 
 export interface HybridReasonerDeps extends ReactExecutorDeps {
   plannerModel?: ModelAdapter;
+  /**
+   * Forwarded into `PlanExecuteExecutor` for semantic preservation of
+   * successful steps across a replan (see `preservePriorSuccesses`). Omit to
+   * keep exact-id-only behavior.
+   */
+  stepMatcher?: StepMatcher;
 }
 
 export interface HybridReasonerConfig {
@@ -56,6 +63,7 @@ export class HybridReasoner implements Contracts.Reasoner {
         sessionPolicy: SessionPolicy;
         plannerModel?: ModelAdapter;
         traceLogger?: Contracts.TraceLogger;
+        stepMatcher?: StepMatcher;
       } = {
         capabilityGuard: deps.capabilityGuard!,
         toolSandbox: deps.toolSandbox!,
@@ -63,6 +71,7 @@ export class HybridReasoner implements Contracts.Reasoner {
       };
       if (deps.plannerModel) planDeps.plannerModel = deps.plannerModel;
       if (deps.traceLogger) planDeps.traceLogger = deps.traceLogger;
+      if (deps.stepMatcher) planDeps.stepMatcher = deps.stepMatcher;
       this.planExecute = new PlanExecuteExecutor(
         modelAdapter,
         this.react,

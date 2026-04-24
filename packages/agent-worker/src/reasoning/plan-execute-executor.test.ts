@@ -2,9 +2,15 @@ import { describe, it, expect } from 'vitest';
 import type { Cognition, Contracts, StandardMessage, SessionPolicy } from '@agent-platform/core';
 import { generateMessageId, generateTraceId, nowMs } from '@agent-platform/core';
 import type { CompletionRequest, ModelAdapter, StreamChunk } from '../model/types.js';
-import { PlanExecuteExecutor, parsePlan, computeLevels } from './plan-execute-executor.js';
-import type { Plan } from '@agent-platform/core';
+import {
+  PlanExecuteExecutor,
+  parsePlan,
+  computeLevels,
+  preservePriorSuccesses,
+} from './plan-execute-executor.js';
+import type { Plan, PlanStep } from '@agent-platform/core';
 import { ReactExecutor } from './react-executor.js';
+import type { StepMatcher } from './step-matcher.js';
 
 function makeMsg(text: string): StandardMessage {
   return {
@@ -617,5 +623,219 @@ describe('PlanExecuteExecutor — replan downgrade (continued)', () => {
 
     const final = events.find((e) => e.kind === 'final') as { text: string };
     expect(final.text).toBe('react 결과');
+  });
+});
+
+describe('preservePriorSuccesses', () => {
+  function step(id: string, goal: string, overrides: Partial<PlanStep> = {}): PlanStep {
+    return {
+      id,
+      goal,
+      dependsOn: [],
+      status: 'pending',
+      ...overrides,
+    };
+  }
+
+  const alwaysMatchFirst: StepMatcher = {
+    async match(_q, candidates) {
+      return candidates[0]?.id ?? null;
+    },
+  };
+
+  const neverMatch: StepMatcher = {
+    async match() {
+      return null;
+    },
+  };
+
+  it('exact id match carries status + observation', async () => {
+    const prior = [step('s1', 'do it', { status: 'success', observation: { ok: true } })];
+    const next = [step('s1', 'do it')];
+    const preserved = await preservePriorSuccesses(prior, next);
+    expect(preserved).toEqual(['s1']);
+    expect(next[0]?.status).toBe('success');
+    expect(next[0]?.observation).toEqual({ ok: true });
+  });
+
+  it('without a matcher, differing ids are NOT preserved', async () => {
+    const prior = [step('old-id', 'same thing', { status: 'success' })];
+    const next = [step('new-id', 'same thing')];
+    const preserved = await preservePriorSuccesses(prior, next);
+    expect(preserved).toEqual([]);
+    expect(next[0]?.status).toBe('pending');
+  });
+
+  it('with a matcher, a different id + same intent is preserved', async () => {
+    const prior = [step('old-id', 'same thing', { status: 'success', observation: 'x' })];
+    const next = [step('new-id', 'same thing, reworded')];
+    const preserved = await preservePriorSuccesses(prior, next, alwaysMatchFirst);
+    expect(preserved).toEqual(['new-id']);
+    expect(next[0]?.status).toBe('success');
+    expect(next[0]?.observation).toBe('x');
+  });
+
+  it('matcher returning null does NOT preserve (no false positive)', async () => {
+    const prior = [step('old', 'step A', { status: 'success' })];
+    const next = [step('new', 'step B, totally unrelated')];
+    const preserved = await preservePriorSuccesses(prior, next, neverMatch);
+    expect(preserved).toEqual([]);
+    expect(next[0]?.status).toBe('pending');
+  });
+
+  it('exact id match wins over semantic — matcher is never consulted when id hits', async () => {
+    let matcherCalls = 0;
+    const noisyMatcher: StepMatcher = {
+      async match(_q, candidates) {
+        matcherCalls += 1;
+        return candidates[0]?.id ?? null;
+      },
+    };
+    const prior = [
+      step('s1', 'A', { status: 'success' }),
+      step('s2', 'B', { status: 'success' }),
+    ];
+    const next = [step('s1', 'A'), step('s2', 'B')];
+    await preservePriorSuccesses(prior, next, noisyMatcher);
+    expect(matcherCalls).toBe(0);
+  });
+
+  it('a prior success can only bind to one new step (no double-preservation)', async () => {
+    const prior = [step('old', 'only one', { status: 'success', observation: 'obs' })];
+    const next = [step('new1', 'step one'), step('new2', 'step two')];
+    const preserved = await preservePriorSuccesses(prior, next, alwaysMatchFirst);
+    // Either new1 or new2 gets preserved (matcher always returns the first
+    // remaining candidate — which for the 2nd call is empty), but not both.
+    expect(preserved).toHaveLength(1);
+    const successCount = next.filter((s) => s.status === 'success').length;
+    expect(successCount).toBe(1);
+  });
+
+  it('only prior success steps are eligible (pending/failed ignored)', async () => {
+    const prior = [
+      step('s1', 'done', { status: 'success' }),
+      step('s2', 'failed', { status: 'failed' }),
+      step('s3', 'pending', { status: 'pending' }),
+    ];
+    const next = [step('new', 'whatever')];
+    const preserved = await preservePriorSuccesses(prior, next, alwaysMatchFirst);
+    // Matcher sees only s1. With alwaysMatchFirst that's preserved.
+    expect(preserved).toEqual(['new']);
+  });
+});
+
+describe('PlanExecuteExecutor — semantic preservation on replan', () => {
+  it('same intent different id is preserved when stepMatcher is wired', async () => {
+    // Initial plan succeeds on "cheap"; second step "flaky" fails and triggers
+    // a replan. The replan emits a **new id** for the already-succeeded step —
+    // exact-id preservation would miss it, but the semantic matcher binds it.
+    const initialPlan = JSON.stringify({
+      rationale: 'two steps',
+      steps: [
+        { id: 'cheap-1', goal: 'gather the files', tool: 'cheap', args: {}, dependsOn: [] },
+        { id: 'flaky-1', goal: 'transform them', tool: 'flaky', args: {}, dependsOn: ['cheap-1'] },
+      ],
+    });
+    const replanPlan = JSON.stringify({
+      rationale: 'reworded',
+      steps: [
+        // Same semantic goal, fresh id.
+        { id: 'g-renamed', goal: 'gather the files', tool: 'cheap', args: {}, dependsOn: [] },
+        { id: 't-alt', goal: 'transform them', tool: 'works', args: {}, dependsOn: ['g-renamed'] },
+      ],
+    });
+    const model = new ScriptedAdapter([initialPlan, replanPlan, '완료']);
+
+    const calls: string[] = [];
+    const sandbox: Contracts.ToolSandbox = {
+      async acquire() {
+        return { id: 'sb', status: 'ready', startedAt: nowMs(), resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } };
+      },
+      async execute(_sb, name) {
+        calls.push(name);
+        if (name === 'cheap') return { toolName: name, success: true, output: 'cheap-ok', durationMs: 1 };
+        if (name === 'flaky') return { toolName: name, success: false, error: 'boom', durationMs: 1 };
+        if (name === 'works') return { toolName: name, success: true, output: 'works-ok', durationMs: 1 };
+        return { toolName: name, success: false, error: 'unknown', durationMs: 0 };
+      },
+      async release() {},
+    };
+
+    // Matcher binds by shared goal prefix — 'gather' maps across old/new id.
+    const matcher: StepMatcher = {
+      async match(q, cands) {
+        const hit = cands.find((c) => c.goal === q);
+        return hit ? hit.id : null;
+      },
+    };
+
+    const reactFallback = new ReactExecutor(model);
+    const ex = new PlanExecuteExecutor(
+      model,
+      reactFallback,
+      {
+        capabilityGuard: alwaysAllow,
+        toolSandbox: sandbox,
+        sessionPolicy: ownerPolicy,
+        stepMatcher: matcher,
+      },
+      { stepRetryLimit: 1, replanLimit: 2 },
+    );
+    const events = await collect(ex.run(makeCtx()));
+
+    // 'cheap' should run ONCE (initial plan) — renamed step in the replan
+    // must inherit status='success' via the matcher, so no second 'cheap'.
+    const cheapCalls = calls.filter((c) => c === 'cheap').length;
+    expect(cheapCalls).toBe(1);
+    // 'flaky' fires twice (initial + 1 retry), then 'works' runs in the new plan.
+    expect(calls).toEqual(['cheap', 'flaky', 'flaky', 'works']);
+
+    // The replan marker should list 'g-renamed' as preserved.
+    const replanMarker = events.find(
+      (e) => e.kind === 'step' && (e as { step: { kind: string } }).step.kind === 'replan',
+    ) as { step: { content: { preservedStepIds?: string[] } } };
+    expect(replanMarker.step.content.preservedStepIds).toEqual(['g-renamed']);
+  });
+
+  it('no matcher → renamed step IS re-executed (behavior unchanged for pre-v0.7 callers)', async () => {
+    const initialPlan = JSON.stringify({
+      rationale: 'two steps',
+      steps: [
+        { id: 'cheap-1', goal: 'gather', tool: 'cheap', args: {}, dependsOn: [] },
+        { id: 'flaky-1', goal: 'xf', tool: 'flaky', args: {}, dependsOn: ['cheap-1'] },
+      ],
+    });
+    const replanPlan = JSON.stringify({
+      rationale: 'reworded',
+      steps: [
+        { id: 'g-renamed', goal: 'gather', tool: 'cheap', args: {}, dependsOn: [] },
+        { id: 't-alt', goal: 'xf', tool: 'works', args: {}, dependsOn: ['g-renamed'] },
+      ],
+    });
+    const model = new ScriptedAdapter([initialPlan, replanPlan, '완료']);
+    const calls: string[] = [];
+    const sandbox: Contracts.ToolSandbox = {
+      async acquire() {
+        return { id: 'sb', status: 'ready', startedAt: nowMs(), resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } };
+      },
+      async execute(_sb, name) {
+        calls.push(name);
+        if (name === 'cheap') return { toolName: name, success: true, output: 'ok', durationMs: 1 };
+        if (name === 'flaky') return { toolName: name, success: false, error: 'x', durationMs: 1 };
+        if (name === 'works') return { toolName: name, success: true, output: 'ok', durationMs: 1 };
+        return { toolName: name, success: false, error: 'x', durationMs: 0 };
+      },
+      async release() {},
+    };
+    const reactFallback = new ReactExecutor(model);
+    const ex = new PlanExecuteExecutor(
+      model,
+      reactFallback,
+      { capabilityGuard: alwaysAllow, toolSandbox: sandbox, sessionPolicy: ownerPolicy },
+      { stepRetryLimit: 1, replanLimit: 2 },
+    );
+    await collect(ex.run(makeCtx()));
+    // Without a matcher, 'cheap' re-executes after replan since id changed.
+    expect(calls.filter((c) => c === 'cheap').length).toBe(2);
   });
 });

@@ -75,3 +75,11 @@ export {
   type HybridReasonerDeps,
   type HybridReasonerConfig,
 } from './reasoning/hybrid-reasoner.js';
+
+export {
+  EmbedderStepMatcher,
+  cosineSimilarity as stepMatcherCosineSimilarity,
+  type StepMatcher,
+  type EmbedFn,
+  type EmbedderStepMatcherOptions,
+} from './reasoning/step-matcher.js';

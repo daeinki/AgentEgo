@@ -22,6 +22,7 @@ import {
 } from '@agent-platform/memory';
 import {
   AgentRunner,
+  EmbedderStepMatcher,
   HybridReasoner,
   InProcessSandbox,
   LiveToolRegistry,
@@ -243,9 +244,10 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
   const sessions = new SessionStore(config.sessionsDbPath);
   const router = new RuleRouter(sessions, { defaultAgentId: 'default', traceLogger });
 
+  const embedder = config.embedder ?? new HashEmbedder(128);
   const memory = new PalaceMemorySystem({
     root: config.palaceRoot,
-    embedder: config.embedder ?? new HashEmbedder(128),
+    embedder,
   });
   await memory.init();
 
@@ -391,6 +393,12 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
     await remountInstalledSkills();
   }
 
+  // Share the palace's embedder with the PlanExecuteExecutor's semantic step
+  // matcher — zero extra network/CPU cost, and keeps both subsystems on the
+  // same embedding space so memory ingest and replan preservation agree on
+  // "semantically similar" meaning the same thing.
+  const stepMatcher = new EmbedderStepMatcher((text) => embedder.embed(text));
+
   const defaultReasoner =
     config.reasoner ??
     new HybridReasoner(
@@ -403,6 +411,7 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
         // above. This single instance is sufficient for single-owner local dev.
         sessionPolicy: ownerPolicy('__default__'),
         traceLogger,
+        stepMatcher,
         ...(config.plannerModel ? { plannerModel: config.plannerModel } : {}),
       },
       config.disablePlanExecute ? { disablePlanExecute: true } : {},

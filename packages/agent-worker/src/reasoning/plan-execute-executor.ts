@@ -1,6 +1,7 @@
 import type { Contracts, GoalUpdate, Plan, PlanStep, ReasoningMode, ReasoningState, ReasoningStep, SessionPolicy, StandardMessage } from '@agent-platform/core';
 import { DEFAULT_REASONING_BUDGET, generateId, nowMs } from '@agent-platform/core';
 import type { CompletionMessage, ModelAdapter } from '../model/types.js';
+import type { StepMatcher } from './step-matcher.js';
 
 /**
  * Minimum EGO `cognition.egoRelevance` score required to fire replan
@@ -42,6 +43,14 @@ export interface PlanExecuteDeps {
   plannerModel?: ModelAdapter;
   /** Optional per-turn debug trace logger (pipeline block R3). */
   traceLogger?: Contracts.TraceLogger;
+  /**
+   * Optional semantic matcher for carrying successful steps across a replan.
+   * When absent, preservation falls back to exact-id matching only (v0.6
+   * behavior). When present, a new plan's step is matched against prior
+   * successes by `goal` similarity after id lookup fails — covers the case
+   * where the planner re-worded the same step with a fresh id.
+   */
+  stepMatcher?: StepMatcher;
 }
 
 interface ReplanContext {
@@ -200,20 +209,15 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
 
       // T9b: preserve prior plan's successful steps. If the LLM's new plan
       // re-uses a step id from a prior success, transfer status + observation
-      // so we don't re-execute completed work. IDs that differ are treated as
-      // brand-new steps (LLM chose a different approach).
-      const preserved: string[] = [];
-      const priorSuccesses = new Map(
-        plan.steps.filter((s) => s.status === 'success').map((s) => [s.id, s] as const),
+      // so we don't re-execute completed work. When an id doesn't match and
+      // a `stepMatcher` is wired, fall back to semantic similarity on
+      // `goal` — catches the case where the planner re-worded the step
+      // with a fresh id.
+      const preserved = await preservePriorSuccesses(
+        plan.steps,
+        newPlan.steps,
+        this.deps.stepMatcher,
       );
-      for (const step of newPlan.steps) {
-        const prior = priorSuccesses.get(step.id);
-        if (prior) {
-          step.status = 'success';
-          step.observation = prior.observation;
-          preserved.push(step.id);
-        }
-      }
 
       const replanStep: ReasoningStep = {
         kind: 'replan',
@@ -449,20 +453,13 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
     if (!parsed.ok) return undefined;
     parsed.value.parentPlanId = previousPlan.id;
 
-    // Same id-based preservation as trigger #1: if the new plan re-uses a
-    // prior success id, transfer status + observation verbatim.
-    const preserved: string[] = [];
-    const priorSuccesses = new Map(
-      previousPlan.steps.filter((s) => s.status === 'success').map((s) => [s.id, s] as const),
+    // Same preservation rule as trigger #1 — exact id first, then optional
+    // semantic fallback via `stepMatcher` when id lookup misses.
+    const preserved = await preservePriorSuccesses(
+      previousPlan.steps,
+      parsed.value.steps,
+      this.deps.stepMatcher,
     );
-    for (const step of parsed.value.steps) {
-      const prior = priorSuccesses.get(step.id);
-      if (prior) {
-        step.status = 'success';
-        step.observation = prior.observation;
-        preserved.push(step.id);
-      }
-    }
 
     const replanStep: ReasoningStep = {
       kind: 'replan',
@@ -792,6 +789,72 @@ export function parsePlan(text: string): { ok: true; value: Plan } | { ok: false
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
+
+/**
+ * Mutate `newSteps` in place to inherit `status='success'` + `observation`
+ * from `priorSteps` when the planner's new plan either re-uses a prior step
+ * id OR (with a `StepMatcher` injected) emits a semantically-equivalent step
+ * under a fresh id. Returns the list of preserved step ids — in the order
+ * they appear in the new plan — for trace/observability.
+ *
+ * Rules:
+ *   1. **Exact id match** is tried first and always wins when present
+ *      (zero-cost, deterministic).
+ *   2. **Semantic fallback**: for each new step whose id did not match, the
+ *      matcher is asked to find the best candidate among the remaining
+ *      prior successes. A prior success can only be bound to a single new
+ *      step — whichever new step matches it first wins; later semantic hits
+ *      on the same prior id are ignored (prevents double-preservation).
+ *   3. When `matcher` is omitted, semantic fallback is skipped and behavior
+ *      matches the pre-v0.7 exact-id-only rule.
+ */
+export async function preservePriorSuccesses(
+  priorSteps: ReadonlyArray<PlanStep>,
+  newSteps: PlanStep[],
+  matcher?: StepMatcher,
+): Promise<string[]> {
+  const priorSuccessList = priorSteps.filter((s) => s.status === 'success');
+  if (priorSuccessList.length === 0) return [];
+
+  const byId = new Map(priorSuccessList.map((s) => [s.id, s] as const));
+  const preserved: string[] = [];
+  const used = new Set<string>();
+  const pendingSemantic: PlanStep[] = [];
+
+  // Pass 1: exact id matches.
+  for (const step of newSteps) {
+    const prior = byId.get(step.id);
+    if (prior && !used.has(prior.id)) {
+      step.status = 'success';
+      step.observation = prior.observation;
+      preserved.push(step.id);
+      used.add(prior.id);
+    } else {
+      pendingSemantic.push(step);
+    }
+  }
+
+  // Pass 2: semantic fallback — one call per unresolved step.
+  if (matcher && pendingSemantic.length > 0) {
+    for (const step of pendingSemantic) {
+      const remaining = priorSuccessList.filter((p) => !used.has(p.id));
+      if (remaining.length === 0) break;
+      const matchedId = await matcher.match(
+        step.goal,
+        remaining.map((p) => ({ id: p.id, goal: p.goal })),
+      );
+      if (matchedId && !used.has(matchedId)) {
+        const prior = byId.get(matchedId)!;
+        step.status = 'success';
+        step.observation = prior.observation;
+        preserved.push(step.id);
+        used.add(matchedId);
+      }
+    }
+  }
+
+  return preserved;
+}
 
 function cloneBudget(source?: Contracts.ReasoningContext['budget']) {
   const base = source ?? DEFAULT_REASONING_BUDGET;
