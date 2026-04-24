@@ -258,6 +258,55 @@ describe('AgentRunner (extended)', () => {
     expect(captured[0]?.egoPerception?.requestType).toBe('workflow_execution');
   });
 
+  it('extracts _egoCognition and _egoGoalUpdates and forwards them to the reasoner', async () => {
+    const session = sessionStore.createSession({
+      agentId: 'default',
+      channelType: 'webchat',
+      conversationId: 'c-cog',
+    });
+
+    const captured: Contracts.ReasoningContext[] = [];
+    const stubReasoner: Contracts.Reasoner = {
+      mode: 'react',
+      async *run(ctx) {
+        captured.push(ctx);
+        yield { kind: 'final', text: 'ok', state: { mode: 'react', egoDecisionId: ctx.egoDecisionId, trace: [], budget: { maxSteps: 8, maxToolCalls: 16, spent: { steps: 0, toolCalls: 0 } }, terminationReason: 'final_answer' } };
+      },
+    };
+    const runner = new AgentRunner(
+      sessionStore,
+      new ScriptedModelAdapter(['unused']),
+      { agentId: 'default' },
+      { reasoner: stubReasoner },
+    );
+
+    await runner.processTurn(
+      session.id,
+      makeMsg('replan me', {
+        _egoCognition: {
+          relevantMemoryIndices: [],
+          relatedGoalId: null,
+          situationSummary: 'goals shifted',
+          opportunities: ['x'],
+          risks: [],
+          egoRelevance: 0.9,
+        },
+        _egoGoalUpdates: [
+          { goalId: 'goal-a', progressDelta: 0.25, notes: 'new scope' },
+          // malformed entries must be filtered out
+          { goalId: 'goal-b' },
+          'garbage',
+        ],
+      }),
+    );
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.egoCognition?.egoRelevance).toBe(0.9);
+    expect(captured[0]?.goalUpdates).toEqual([
+      { goalId: 'goal-a', progressDelta: 0.25, notes: 'new scope' },
+    ]);
+  });
+
   it('omits egoPerception when metadata payload is malformed', async () => {
     const session = sessionStore.createSession({
       agentId: 'default',

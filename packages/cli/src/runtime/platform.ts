@@ -438,13 +438,14 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
           return {};
         }
 
-        // Pull both perception (for ComplexityRouter) and decisionId (for trace
-        // correlation) into channel.metadata for downstream consumption. The
-        // enrich path already attaches `_egoDecisionId` + `_egoEnrichment`; we
-        // additively layer `_egoPerception` on top of either path.
+        // Pull perception + cognition + goalUpdates (for ComplexityRouter and
+        // PlanExecuteExecutor trigger #3) and decisionId (for trace correlation)
+        // into channel.metadata for downstream consumption. The enrich path
+        // already attaches `_egoDecisionId` + `_egoEnrichment`; we additively
+        // layer `_egoPerception` / `_egoCognition` / `_egoGoalUpdates`.
         const baseMsg: StandardMessage =
           record.decision.action === 'enrich' ? record.decision.enrichedMessage : msg;
-        const effectiveMsg: StandardMessage = record.thinking?.perception
+        const effectiveMsg: StandardMessage = record.thinking
           ? {
               ...baseMsg,
               channel: {
@@ -452,6 +453,10 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
                 metadata: {
                   ...baseMsg.channel.metadata,
                   _egoPerception: record.thinking.perception,
+                  _egoCognition: record.thinking.cognition,
+                  ...(record.thinking.goalUpdates && record.thinking.goalUpdates.length > 0
+                    ? { _egoGoalUpdates: record.thinking.goalUpdates }
+                    : {}),
                   ...(record.metadata?.egoDecisionId
                     ? { _egoDecisionId: record.metadata.egoDecisionId }
                     : {}),

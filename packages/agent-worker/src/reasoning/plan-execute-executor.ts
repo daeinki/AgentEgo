@@ -1,6 +1,14 @@
-import type { Contracts, Plan, PlanStep, ReasoningMode, ReasoningState, ReasoningStep, SessionPolicy, StandardMessage } from '@agent-platform/core';
+import type { Contracts, GoalUpdate, Plan, PlanStep, ReasoningMode, ReasoningState, ReasoningStep, SessionPolicy, StandardMessage } from '@agent-platform/core';
 import { DEFAULT_REASONING_BUDGET, generateId, nowMs } from '@agent-platform/core';
 import type { CompletionMessage, ModelAdapter } from '../model/types.js';
+
+/**
+ * Minimum EGO `cognition.egoRelevance` score required to fire replan
+ * trigger #3 (agent-orchestration.md §4.4). Above this threshold AND with a
+ * non-empty `goalUpdates[]`, the executor forces a single planner refresh so
+ * the plan can absorb the freshly signaled goal-state changes.
+ */
+const TRIGGER_3_REL_THRESHOLD = 0.8;
 
 export interface PlanExecuteConfig {
   plannerTemperature?: number;
@@ -56,9 +64,8 @@ interface ReplanContext {
  *   5. Final answer synthesis via a second LLM call
  *
  * Out of scope:
- *   - Replan triggers #2 (LLM judge contradiction) and #3 (egoRelevance>0.8
- *     goal updates) — both require additional plumbing not yet in
- *     ReasoningContext
+ *   - Replan trigger #2 (LLM judge contradiction) — requires an extra LLM
+ *     call per step, intentionally deferred (cost)
  *   - Parallel step execution (sequential topo order only — design §6.1)
  */
 export class PlanExecuteExecutor implements Contracts.Reasoner {
@@ -108,6 +115,18 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
     });
 
     let replanCount = 0;
+
+    // 1b. Trigger #3: if EGO flagged this turn as high-relevance AND produced
+    //     goal updates, immediately re-plan once so the planner can absorb
+    //     the goal-state context it didn't see on the first call. Counts
+    //     against `replanLimit` so combined with trigger #1 we still cap at N.
+    if (shouldFireGoalUpdateReplan(ctx) && replanLimit > 0) {
+      const refreshed = yield* this.applyGoalUpdateReplan(ctx, plan, state);
+      if (refreshed) {
+        plan = refreshed;
+        replanCount += 1;
+      }
+    }
 
     // 2-3. Execution loop. Reentered after each successful replan.
     while (true) {
@@ -373,6 +392,98 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
     }
   }
 
+  // ─── Trigger #3: goal-update replan ───────────────────────────────────────
+
+  /**
+   * Re-run the planner once with the current plan + `goalUpdates[]` surfaced
+   * so the new plan can reflect the shifted goal context. Emits a `replan`
+   * trace marker with reason `goal_updates_high_relevance` and preserves
+   * successful steps via id-match (same rule as trigger #1). Returns the new
+   * plan, or `undefined` if the planner produced invalid JSON (caller keeps
+   * the original plan in that case — we don't downgrade to ReAct for this
+   * trigger; execution still has a chance).
+   */
+  private async *applyGoalUpdateReplan(
+    ctx: Contracts.ReasoningContext,
+    previousPlan: Plan,
+    state: ReasoningState,
+  ): AsyncGenerator<Contracts.ReasoningEvent, Plan | undefined> {
+    const goalUpdates = ctx.goalUpdates ?? [];
+    ctx.traceLogger?.event({
+      traceId: ctx.userMessage.traceId,
+      sessionId: ctx.sessionId,
+      agentId: ctx.agentId,
+      block: 'R3',
+      event: 'replan',
+      timestamp: Date.now(),
+      payload: {
+        round: 1,
+        reason: 'goal_updates_high_relevance',
+        egoRelevance: ctx.egoCognition?.egoRelevance ?? null,
+        goalUpdateCount: goalUpdates.length,
+      },
+    });
+
+    const planner = this.deps.plannerModel ?? this.actorModel;
+    const prompt = buildGoalUpdatePrompt(ctx, previousPlan, goalUpdates);
+    let planText = '';
+    for await (const chunk of planner.stream({
+      systemPrompt: prompt.systemPrompt,
+      messages: prompt.messages,
+      temperature: this.config.plannerTemperature ?? 0.2,
+      maxTokens: this.config.plannerMaxTokens ?? 1024,
+    })) {
+      if (chunk.type === 'text_delta') planText += chunk.text;
+      else if (chunk.type === 'usage') {
+        const ev: Contracts.ReasoningEvent = {
+          kind: 'usage',
+          inputTokens: chunk.inputTokens,
+          outputTokens: chunk.outputTokens,
+        };
+        if (chunk.cost !== undefined) (ev as { cost?: number }).cost = chunk.cost;
+        yield ev;
+      }
+    }
+
+    const parsed = parsePlan(planText);
+    if (!parsed.ok) return undefined;
+    parsed.value.parentPlanId = previousPlan.id;
+
+    // Same id-based preservation as trigger #1: if the new plan re-uses a
+    // prior success id, transfer status + observation verbatim.
+    const preserved: string[] = [];
+    const priorSuccesses = new Map(
+      previousPlan.steps.filter((s) => s.status === 'success').map((s) => [s.id, s] as const),
+    );
+    for (const step of parsed.value.steps) {
+      const prior = priorSuccesses.get(step.id);
+      if (prior) {
+        step.status = 'success';
+        step.observation = prior.observation;
+        preserved.push(step.id);
+      }
+    }
+
+    const replanStep: ReasoningStep = {
+      kind: 'replan',
+      at: nowMs(),
+      content: {
+        fromPlanId: previousPlan.id,
+        toPlanId: parsed.value.id,
+        reason: 'goal_updates_high_relevance',
+        preservedStepIds: preserved,
+        goalUpdateCount: goalUpdates.length,
+        egoRelevance: ctx.egoCognition?.egoRelevance ?? null,
+      },
+    };
+    state.trace.push(replanStep);
+    yield { kind: 'step', step: replanStep };
+    state.plan = parsed.value;
+    state.trace.push({ kind: 'plan', at: nowMs(), content: parsed.value });
+    yield { kind: 'step', step: lastStep(state) };
+    return parsed.value;
+  }
+
   // ─── Planning ─────────────────────────────────────────────────────────────
 
   private async *callPlanner(
@@ -515,6 +626,58 @@ function buildPlannerPrompt(ctx: Contracts.ReasoningContext): {
     `  ]\n` +
     `}\n` +
     `반드시 위 JSON 만 반환. 다른 텍스트 금지.`;
+  return {
+    systemPrompt,
+    messages: [
+      ...ctx.priorMessages.map(copyMessage),
+      { role: 'user', content: extractText(ctx.userMessage) },
+    ],
+  };
+}
+
+/**
+ * Gate for replan trigger #3. Fires when EGO judged the turn highly relevant
+ * to current goals (`egoRelevance > TRIGGER_3_REL_THRESHOLD`) AND produced
+ * at least one `goalUpdate`. Both signals together mean the initial plan
+ * was formed without the goal-state shift — a single refresh pass lets the
+ * planner account for it. Missing EGO context degrades to no-op.
+ */
+function shouldFireGoalUpdateReplan(ctx: Contracts.ReasoningContext): boolean {
+  const rel = ctx.egoCognition?.egoRelevance;
+  if (typeof rel !== 'number' || rel <= TRIGGER_3_REL_THRESHOLD) return false;
+  return (ctx.goalUpdates?.length ?? 0) > 0;
+}
+
+function buildGoalUpdatePrompt(
+  ctx: Contracts.ReasoningContext,
+  previousPlan: Plan,
+  goalUpdates: GoalUpdate[],
+): { systemPrompt: string; messages: CompletionMessage[] } {
+  const toolList = ctx.availableTools.map((t) => `- ${t.name}: ${t.description}`).join('\n');
+  const planLines = previousPlan.steps
+    .map((s) => `- ${s.id}: ${s.goal}${s.tool ? ` [tool=${s.tool}]` : ''}`)
+    .join('\n');
+  const updateLines = goalUpdates
+    .map((u) => `- ${u.goalId} Δ=${u.progressDelta}${u.notes ? ` (${u.notes})` : ''}`)
+    .join('\n');
+  const cognition = ctx.egoCognition;
+  const situationBlock = cognition
+    ? `\n\n상황 요약: ${cognition.situationSummary}\n` +
+      (cognition.opportunities.length > 0
+        ? `기회: ${cognition.opportunities.join(' / ')}\n`
+        : '') +
+      (cognition.risks.length > 0 ? `위험: ${cognition.risks.join(' / ')}\n` : '')
+    : '';
+  const systemPrompt =
+    `${ctx.systemPrompt}\n\n## 목표 갱신 반영 재계획\n` +
+    `EGO 가 이번 턴을 고관련(egoRelevance=${cognition?.egoRelevance?.toFixed(2) ?? '?'}) 으로 판정하고 다음 목표 변경을 보고했다:\n` +
+    `${updateLines}${situationBlock}\n` +
+    `현재 계획:\n${planLines || '(없음)'}\n\n` +
+    `사용 가능 도구:\n${toolList || '(없음)'}\n\n` +
+    `위 목표 변경을 반영해 계획을 다시 작성하라. 이미 유효한 단계는 동일 \`id\` 로 유지하면 재실행되지 않는다.\n` +
+    `출력 스키마는 동일:\n` +
+    `{ "rationale": "...", "steps": [ { "id": "...", "goal": "...", "tool": "...", "args": {...}, "dependsOn": [] } ] }\n` +
+    `JSON 만 반환.`;
   return {
     systemPrompt,
     messages: [

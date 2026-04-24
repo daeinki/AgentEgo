@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Contracts, StandardMessage, SessionPolicy } from '@agent-platform/core';
+import type { Cognition, Contracts, StandardMessage, SessionPolicy } from '@agent-platform/core';
 import { generateMessageId, generateTraceId, nowMs } from '@agent-platform/core';
 import type { CompletionRequest, ModelAdapter, StreamChunk } from '../model/types.js';
 import { PlanExecuteExecutor, parsePlan, computeLevels } from './plan-execute-executor.js';
@@ -411,6 +411,172 @@ describe('computeLevels', () => {
     const levels = computeLevels(plan);
     expect(levels).toHaveLength(1);
     expect(levels[0]?.[0]?.id).toBe('a');
+  });
+});
+
+describe('PlanExecuteExecutor — trigger #3 (goalUpdates + egoRelevance)', () => {
+  const cognitionHigh: Cognition = {
+    relevantMemoryIndices: [],
+    relatedGoalId: null,
+    situationSummary: 'goal state shifted mid-turn',
+    opportunities: ['re-scope'],
+    risks: [],
+    egoRelevance: 0.9,
+  };
+
+  it('fires an extra planner pass when egoRelevance>0.8 AND goalUpdates present', async () => {
+    const initialPlan = JSON.stringify({
+      rationale: 'first pass',
+      steps: [{ id: 's1', goal: 'original goal', tool: 'list', args: {}, dependsOn: [] }],
+    });
+    // Trigger #3 reruns the planner before execution. This refreshed plan
+    // must succeed and be the one that's actually executed.
+    const refreshedPlan = JSON.stringify({
+      rationale: 'refreshed with new goals',
+      steps: [{ id: 's-new', goal: 'revised goal', tool: 'list', args: {}, dependsOn: [] }],
+    });
+    const model = new ScriptedAdapter([initialPlan, refreshedPlan, '완료']);
+    const execLog: string[] = [];
+    const reactFallback = new ReactExecutor(model);
+    const ex = new PlanExecuteExecutor(
+      model,
+      reactFallback,
+      { capabilityGuard: alwaysAllow, toolSandbox: makeSandbox(execLog), sessionPolicy: ownerPolicy },
+    );
+
+    const events = await collect(
+      ex.run(
+        makeCtx({
+          egoCognition: cognitionHigh,
+          goalUpdates: [{ goalId: 'goal-abc', progressDelta: 0.25, notes: 'scope widened' }],
+        }),
+      ),
+    );
+
+    const replanMarkers = events.filter(
+      (e) => e.kind === 'step' && (e as { step: { kind: string } }).step.kind === 'replan',
+    ) as { step: { content: { reason?: string; goalUpdateCount?: number; egoRelevance?: number } } }[];
+    expect(replanMarkers).toHaveLength(1);
+    expect(replanMarkers[0]?.step.content.reason).toBe('goal_updates_high_relevance');
+    expect(replanMarkers[0]?.step.content.goalUpdateCount).toBe(1);
+    expect(replanMarkers[0]?.step.content.egoRelevance).toBe(0.9);
+
+    // Refreshed plan should have been executed, not the initial one.
+    expect(execLog).toEqual(['list:{}']);
+    const final = events.find((e) => e.kind === 'final') as {
+      state: { plan?: { steps: { id: string; status: string }[] } };
+    };
+    expect(final.state.plan?.steps[0]?.id).toBe('s-new');
+  });
+
+  it('does NOT fire when egoRelevance is below threshold', async () => {
+    const plan = JSON.stringify({
+      rationale: 'plain',
+      steps: [{ id: 's1', goal: 'do it', tool: 'list', args: {}, dependsOn: [] }],
+    });
+    const model = new ScriptedAdapter([plan, '완료']);
+    const reactFallback = new ReactExecutor(model);
+    const ex = new PlanExecuteExecutor(
+      model,
+      reactFallback,
+      { capabilityGuard: alwaysAllow, toolSandbox: makeSandbox(), sessionPolicy: ownerPolicy },
+    );
+
+    const events = await collect(
+      ex.run(
+        makeCtx({
+          egoCognition: { ...cognitionHigh, egoRelevance: 0.5 },
+          goalUpdates: [{ goalId: 'goal-xyz', progressDelta: 0.1 }],
+        }),
+      ),
+    );
+    const replanMarkers = events.filter(
+      (e) => e.kind === 'step' && (e as { step: { kind: string } }).step.kind === 'replan',
+    );
+    expect(replanMarkers).toHaveLength(0);
+  });
+
+  it('does NOT fire when goalUpdates is empty', async () => {
+    const plan = JSON.stringify({
+      rationale: 'plain',
+      steps: [{ id: 's1', goal: 'do it', tool: 'list', args: {}, dependsOn: [] }],
+    });
+    const model = new ScriptedAdapter([plan, '완료']);
+    const reactFallback = new ReactExecutor(model);
+    const ex = new PlanExecuteExecutor(
+      model,
+      reactFallback,
+      { capabilityGuard: alwaysAllow, toolSandbox: makeSandbox(), sessionPolicy: ownerPolicy },
+    );
+
+    const events = await collect(
+      ex.run(makeCtx({ egoCognition: cognitionHigh, goalUpdates: [] })),
+    );
+    const replanMarkers = events.filter(
+      (e) => e.kind === 'step' && (e as { step: { kind: string } }).step.kind === 'replan',
+    );
+    expect(replanMarkers).toHaveLength(0);
+  });
+
+  it('counts against replanLimit: one trigger-3 + one step-retry = 2 replans total', async () => {
+    // Refreshed plan points at a flaky tool; retry exhaustion fires trigger #1,
+    // producing a second replan round. With replanLimit=2 we should NOT
+    // downgrade to ReAct (budget not exceeded).
+    const initialPlan = JSON.stringify({
+      rationale: 'initial',
+      steps: [{ id: 's0', goal: 'original', tool: 'list', args: {}, dependsOn: [] }],
+    });
+    const refreshedPlan = JSON.stringify({
+      rationale: 'refreshed after goal update',
+      steps: [{ id: 's1', goal: 'flaky step', tool: 'flaky', args: {}, dependsOn: [] }],
+    });
+    const retryReplan = JSON.stringify({
+      rationale: 'after retry',
+      steps: [{ id: 's2', goal: 'fallback', tool: 'works', args: {}, dependsOn: [] }],
+    });
+    const model = new ScriptedAdapter([initialPlan, refreshedPlan, retryReplan, '완료']);
+
+    const sandbox: Contracts.ToolSandbox = {
+      async acquire() {
+        return { id: 'sb', status: 'ready', startedAt: nowMs(), resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } };
+      },
+      async execute(_sb, name) {
+        if (name === 'flaky') return { toolName: name, success: false, error: 'boom', durationMs: 0 };
+        return { toolName: name, success: true, output: 'ok', durationMs: 1 };
+      },
+      async release() {},
+    };
+    const reactFallback = new ReactExecutor(model);
+    const ex = new PlanExecuteExecutor(
+      model,
+      reactFallback,
+      { capabilityGuard: alwaysAllow, toolSandbox: sandbox, sessionPolicy: ownerPolicy },
+      { stepRetryLimit: 1, replanLimit: 2 },
+    );
+
+    const events = await collect(
+      ex.run(
+        makeCtx({
+          egoCognition: cognitionHigh,
+          goalUpdates: [{ goalId: 'goal-1', progressDelta: 0.2 }],
+        }),
+      ),
+    );
+    const replanMarkers = events.filter(
+      (e) => e.kind === 'step' && (e as { step: { kind: string } }).step.kind === 'replan',
+    ) as { step: { content: { reason?: string } } }[];
+    // Expect trigger-3 marker + trigger-1 marker, but NO replan_limit_exceeded
+    // (we haven't exceeded the budget).
+    expect(replanMarkers.map((m) => m.step.content.reason)).toEqual([
+      'goal_updates_high_relevance',
+      'step_retry_exhausted',
+    ]);
+    const final = events.find((e) => e.kind === 'final') as {
+      text: string;
+      state: { terminationReason: string };
+    };
+    expect(final.state.terminationReason).toBe('final_answer');
+    expect(final.text).toBe('완료');
   });
 });
 

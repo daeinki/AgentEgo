@@ -1,5 +1,7 @@
 import type {
+  Cognition,
   Contracts,
+  GoalUpdate,
   Perception,
   Phase,
   PhaseEventDetail,
@@ -157,6 +159,8 @@ export class AgentRunner {
       });
     const egoDecisionId = extractEgoDecisionId(msg);
     const egoPerception = extractEgoPerception(msg);
+    const egoCognition = extractEgoCognition(msg);
+    const goalUpdates = extractEgoGoalUpdates(msg);
 
     let responseText = '';
     let inputTokens = 0;
@@ -177,6 +181,8 @@ export class AgentRunner {
       availableTools,
       egoDecisionId,
       ...(egoPerception ? { egoPerception } : {}),
+      ...(egoCognition ? { egoCognition } : {}),
+      ...(goalUpdates && goalUpdates.length > 0 ? { goalUpdates } : {}),
       ...(trace ? { traceLogger: trace } : {}),
     };
 
@@ -403,6 +409,47 @@ function extractEgoPerception(msg: StandardMessage): Perception | undefined {
     return undefined;
   }
   return p as Perception;
+}
+
+/**
+ * Lift the EGO `Cognition` snapshot (opportunities/risks/egoRelevance) into
+ * ReasoningContext. Used by PlanExecuteExecutor to gate replan trigger #3.
+ * Malformed payloads are treated as absent.
+ */
+function extractEgoCognition(msg: StandardMessage): Cognition | undefined {
+  const meta = msg.channel.metadata as Record<string, unknown> | undefined;
+  const raw = meta?.['_egoCognition'];
+  if (!raw || typeof raw !== 'object') return undefined;
+  const c = raw as Partial<Cognition>;
+  if (
+    typeof c.egoRelevance !== 'number' ||
+    typeof c.situationSummary !== 'string' ||
+    !Array.isArray(c.opportunities) ||
+    !Array.isArray(c.risks) ||
+    !Array.isArray(c.relevantMemoryIndices)
+  ) {
+    return undefined;
+  }
+  return c as Cognition;
+}
+
+/**
+ * Lift EGO `goalUpdates[]` into ReasoningContext. Filters out malformed
+ * entries; returns an empty array if the metadata is absent so callers can
+ * rely on `.length` checks without null-guarding.
+ */
+function extractEgoGoalUpdates(msg: StandardMessage): GoalUpdate[] {
+  const meta = msg.channel.metadata as Record<string, unknown> | undefined;
+  const raw = meta?.['_egoGoalUpdates'];
+  if (!Array.isArray(raw)) return [];
+  const out: GoalUpdate[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const u = item as Partial<GoalUpdate>;
+    if (typeof u.goalId !== 'string' || typeof u.progressDelta !== 'number') continue;
+    out.push(u as GoalUpdate);
+  }
+  return out;
 }
 
 function extractEgoEnrichment(msg: StandardMessage): {

@@ -1,4 +1,5 @@
-import type { Perception } from '../schema/ego-thinking.js';
+import type { Cognition, Perception } from '../schema/ego-thinking.js';
+import type { GoalUpdate } from '../schema/goal.js';
 import type {
   ReasoningMode,
   ReasoningState,
@@ -54,6 +55,21 @@ export interface ReasoningContext {
    * Lifted from `channel.metadata._egoPerception` by AgentRunner.
    */
   egoPerception?: Perception;
+  /**
+   * Optional EGO `Cognition` snapshot (opportunities/risks/egoRelevance).
+   * Consumed by PlanExecuteExecutor to gate replan trigger #3
+   * (egoRelevance > 0.8 AND goalUpdates.length > 0 — see
+   * agent-orchestration.md §4.4). Lifted from
+   * `channel.metadata._egoCognition` by AgentRunner.
+   */
+  egoCognition?: Cognition;
+  /**
+   * Optional goal-state deltas produced by EGO's deep-path LLM in this turn.
+   * When combined with `egoCognition.egoRelevance > 0.8` these trigger a
+   * single replan pass so the planner can account for the updated goal
+   * context. Lifted from `channel.metadata._egoGoalUpdates` by AgentRunner.
+   */
+  goalUpdates?: GoalUpdate[];
   abortSignal?: AbortSignal;
   /**
    * Optional per-turn debug trace logger for pipeline blocks R1/R2/R3 and
