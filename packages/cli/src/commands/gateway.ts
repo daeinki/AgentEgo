@@ -113,6 +113,7 @@ export async function gatewayStartCommand(options: GatewayStartOptions): Promise
     defaultToolsConfig: resolveDefaultToolsConfig(paths.stateDir),
     skillInstallRoot: join(paths.stateDir, 'skills'),
     devicesFile: join(paths.stateDir, 'state', 'devices.json'),
+    tasksFile: join(paths.stateDir, 'scheduler', 'tasks.json'),
     ...(webappDir ? { webappDir } : {}),
     ...(agentSystemPrompt ? { agentSystemPrompt } : {}),
   });
@@ -139,6 +140,7 @@ export async function gatewayStartCommand(options: GatewayStartOptions): Promise
       handler: platform.handler,
       traceLogger: platform.traceLogger,
       channels: platform.channels,
+      cron: platform.scheduler,
       version: '0.1.0',
       ports: platform.ports,
     },

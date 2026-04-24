@@ -1,3 +1,4 @@
+import { dirname } from 'node:path';
 import type { Contracts, EgoFullConfig, SessionPolicy, StandardMessage } from '@agent-platform/core';
 import type { ModelAdapter } from '@agent-platform/agent-worker';
 import {
@@ -40,6 +41,13 @@ import {
 } from '@agent-platform/skills';
 import type { Permission } from '@agent-platform/core';
 import { WebChatAdapter } from '@agent-platform/channel-webchat';
+import {
+  BashTaskRunner,
+  ChatTaskRunner,
+  SchedulerService,
+  WorkflowTaskRunner,
+  loadTasksFromFile,
+} from '@agent-platform/scheduler';
 import {
   InMemoryMetricsSink,
   SqliteTraceLog,
@@ -153,6 +161,19 @@ export interface PlatformConfig {
   traceDbPath?: string;
   /** Days of trace retention; rows older than this are pruned on boot. */
   traceRetentionDays?: number;
+  /**
+   * Path to the cron scheduler task file. When the file exists it is parsed
+   * into `CronTask[]` and handed to `SchedulerService`; a missing file is
+   * equivalent to "no scheduled tasks" (scheduler still boots, `cron.list`
+   * RPC returns `[]`). Defaults to `<stateDir>/scheduler/tasks.json` at the
+   * CLI layer.
+   */
+  tasksFile?: string;
+  /**
+   * Base dir for resolving relative `workflow.path` values in cron tasks.
+   * Defaults to the tasksFile's parent directory.
+   */
+  workflowBaseDir?: string;
 }
 
 export interface PlatformHandles {
@@ -172,6 +193,12 @@ export interface PlatformHandles {
    * directly (structurally-compatible `list()`/`get()` shape).
    */
   channels: PlatformChannelRegistry;
+  /**
+   * Cron scheduler. Empty when no `tasks.json` is present; otherwise loaded +
+   * started during `startPlatform()`. Gateway-cli's `RpcDeps.cron` accepts
+   * this directly (structurally-compatible `list()` / `runNow()` shape).
+   */
+  scheduler: SchedulerService;
   metrics: InMemoryMetricsSink;
   /**
    * The same handler wired into ApiGateway. Exposed so alternate entry points
@@ -592,6 +619,18 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
 
   const webchatPort = webchat.listeningPort();
 
+  // ─── Cron scheduler (option B: chat/bash/workflow runners) ────────────────
+  const scheduler = buildScheduler({
+    tasksFile: config.tasksFile,
+    workflowBaseDir: config.workflowBaseDir,
+    handler,
+    router,
+    traceLogger,
+    toolSandbox,
+    capabilityGuard,
+  });
+  scheduler.start();
+
   return {
     sessions,
     router,
@@ -604,11 +643,13 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
     gateway,
     webchat,
     channels,
+    scheduler,
     metrics,
     traceLogger,
     handler,
     ports: { gateway: gatewayPort, webchat: webchatPort },
     async shutdown() {
+      await scheduler.stop();
       channels.deregister('webchat');
       await webchat.shutdown();
       await gateway.stop();
@@ -619,6 +660,46 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
       await telemetry.shutdown();
     },
   };
+}
+
+/**
+ * Build a SchedulerService from config. When `tasksFile` is missing the
+ * scheduler still boots (empty task list) so `cron.list` RPC works without
+ * forcing the user to create an empty file.
+ */
+function buildScheduler(opts: {
+  tasksFile?: string;
+  workflowBaseDir?: string;
+  handler: MessageHandler;
+  router: RuleRouter;
+  traceLogger: Contracts.TraceLogger;
+  toolSandbox: Contracts.ToolSandbox;
+  capabilityGuard: Contracts.CapabilityGuard;
+}): SchedulerService {
+  const tasks = opts.tasksFile ? loadTasksFromFile(opts.tasksFile) : [];
+  const workflowBaseDir =
+    opts.workflowBaseDir ??
+    (opts.tasksFile ? dirname(opts.tasksFile) : undefined);
+  const chatRunner = new ChatTaskRunner({
+    handler: opts.handler,
+    router: opts.router,
+    traceLogger: opts.traceLogger,
+  });
+  const bashRunner = new BashTaskRunner({
+    toolSandbox: opts.toolSandbox,
+    capabilityGuard: opts.capabilityGuard,
+    policyFor: (taskId) => ownerPolicy(`cron-${taskId}`),
+  });
+  const workflowRunner = new WorkflowTaskRunner({
+    toolSandbox: opts.toolSandbox,
+    capabilityGuard: opts.capabilityGuard,
+    policyFor: (taskId) => ownerPolicy(`cron-${taskId}`),
+    ...(workflowBaseDir ? { workflowBaseDir } : {}),
+  });
+  return new SchedulerService({
+    tasks,
+    runners: { chat: chatRunner, bash: bashRunner, workflow: workflowRunner },
+  });
 }
 
 /**

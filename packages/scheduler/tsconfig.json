@@ -8,11 +8,6 @@
   "references": [
     { "path": "../core" },
     { "path": "../control-plane" },
-    { "path": "../gateway-cli" },
-    { "path": "../tui" },
-    { "path": "../agent-worker" },
-    { "path": "../ego" },
-    { "path": "../scheduler" },
-    { "path": "../skills" }
+    { "path": "../workflow" }
   ]
 }

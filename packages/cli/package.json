@@ -19,6 +19,7 @@
     "@agent-platform/gateway-cli": "workspace:*",
     "@agent-platform/memory": "workspace:*",
     "@agent-platform/observability": "workspace:*",
+    "@agent-platform/scheduler": "workspace:*",
     "@agent-platform/skills": "workspace:*",
     "@agent-platform/tui": "workspace:*",
     "commander": "^13.1.0",
