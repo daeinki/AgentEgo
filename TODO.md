@@ -208,7 +208,7 @@
 - [ ] replan 트리거 #2 (LLM judge) — 비용 사유로 보류 중, 실데이터 수집 후 재평가
 - [x] ~~replan 트리거 #3 (egoRelevance>0.8 goalUpdates)~~ — 🟢 완료. `ReasoningContext` 에 `egoCognition` + `goalUpdates` 필드 추가, `platform.ts` 가 metadata `_egoCognition`/`_egoGoalUpdates` 로 전달, `PlanExecuteExecutor` 가 초기 plan 직후 1회 재계획 (`goal_updates_high_relevance`). `replanLimit` 공유로 트리거 #1 과 합쳐도 상한 초과 없음
 - [ ] planner JSON 모드 — `ModelAdapter` 가 `response_format` 미노출, 현재 system prompt 유도 + 수동 파싱
-- [ ] replan 보존 의미 매칭 — 현재 id 매칭만, 동일 의도 다른 id 재발행 시 중복 실행
+- [x] ~~replan 보존 의미 매칭~~ — 🟢 완료 (커밋 `672fd31`). `StepMatcher` 인터페이스 + `EmbedderStepMatcher` 기본 구현 (threshold 0.85). `preservePriorSuccesses()` 헬퍼가 id-match 우선 + 의미 fallback. `HybridReasonerDeps.stepMatcher` 로 주입, platform.ts 가 palace 의 `embedder.embed` 공유. matcher 미주입 시 pre-v0.7 id-only 동작 유지
 
 ### 멀티에이전트 / 분산
 
@@ -242,7 +242,7 @@
 ### 기능 확장
 
 - [ ] Workflow 엔진 개선 — 함수 정의/호출, 에러 핸들러, 중첩 변수 스코프
-- [ ] Memory access logging — 현재 `PalaceMemorySystem.search()` 스텁
+- [x] ~~Memory access logging~~ — 🟢 완료 (커밋 `d2d8d89`). `hybridSearchDetailed` 가 chunkId 반환 → `PalaceMemorySystem.search()` 가 `MemoryChunkStore.recordAccess()` 호출. `AGENT_MEMORY_ACCESS_LOG` 환경변수 토글 (기본 on, `=0` off). `memory_access_log` 스키마는 pre-existing, 이전 stub 은 placeholder 였음
 
 ### 문서화
 
