@@ -26,6 +26,7 @@ import {
   traceListCommand,
   traceShowCommand,
 } from './commands/trace.js';
+import { deviceListCommand, deviceRevokeCommand } from './commands/device.js';
 
 const program = new Command();
 
@@ -168,6 +169,22 @@ trace
   .argument('<traceId>', 'Trace id (e.g. trc-…)')
   .option('--format <fmt>', 'json | ndjson', 'json')
   .action(traceExportCommand);
+
+const device = program
+  .command('device')
+  .description('Manage browser device enrollments (devices.json)');
+
+device
+  .command('list')
+  .description('List enrolled devices (deviceId, name, enrolledAt, lastSeenAt)')
+  .option('--json', 'Emit raw JSON instead of a table')
+  .action(deviceListCommand);
+
+device
+  .command('revoke')
+  .description('Revoke an enrolled device by deviceId (cuts session tokens immediately)')
+  .argument('<deviceId>', 'Device id (UUID assigned by enroll)')
+  .action(deviceRevokeCommand);
 
 program.parse();
 
