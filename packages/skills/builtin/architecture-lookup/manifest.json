@@ -1,10 +1,10 @@
 {
   "id": "architecture-lookup",
   "name": "Architecture Lookup",
-  "description": "Look up and search the agent-platform TUI/Webapp → Gateway → EGO → AgentRunner → Reasoner architecture walkthrough bundled as visualize_architecture.md (v0.6.0 — includes webapp surface §14 and phase-format sharing §15). Read-only, no permissions required.",
-  "version": "0.6.0",
+  "description": "Look up and search the agent-platform TUI/Webapp → Gateway → EGO → AgentRunner → Reasoner architecture walkthrough bundled as visualize_architecture.md (v0.7.0 — adds §4 [C2'] PlatformChannelRegistry, [C2''] SchedulerService, [R3] replan trigger #3 on top of webapp §14 and phase-format §15). Read-only, no permissions required.",
+  "version": "0.7.0",
   "author": "agent-platform",
   "permissions": [],
   "entryPoint": "index.js",
-  "contentSha256": "1e886be3c44e13c9192257306e2b2242d9e9e56b25308d9bf27e2cd081bd94dd"
+  "contentSha256": "360d27b93381fa6d703d25a2d94474deb8ade3e66b62d74fe0cc21a39f482205"
 }
