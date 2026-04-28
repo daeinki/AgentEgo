@@ -219,6 +219,437 @@ describe('executeWorkflow', () => {
   });
 });
 
+describe('executeWorkflow — functions (call / return)', () => {
+  it('calls a function and stores its return value in the caller scope via saveAs', async () => {
+    const tools = new RecordingTools(() => ({ success: true, output: 'ok' }));
+    const wf: Workflow = {
+      id: 'wf',
+      version: '1.0',
+      entry: {
+        id: 'main',
+        kind: 'sequence',
+        steps: [
+          { id: 'c', kind: 'call', function: 'double', args: { n: 4 }, saveAs: 'r' },
+        ],
+      },
+      functions: {
+        double: {
+          id: 'd-body',
+          kind: 'sequence',
+          steps: [
+            // The function reads `n` from its local frame (the bound arg)
+            // and returns n * 2. Since the engine has no math primitives,
+            // we hard-code the expected value via a return step driven by
+            // the bound input — emulate "doubling" by returning a literal
+            // computed via a tool. Simpler: just return a literal here and
+            // assert the binding works via a separate test.
+            { id: 'r', kind: 'return', value: 'doubled' },
+          ],
+        },
+      },
+    };
+    const result = await executeWorkflow(wf, { tools });
+    expect(result.completed).toBe(true);
+    expect(result.vars.r).toBe('doubled');
+  });
+
+  it('binds args as local variables visible inside the function body', async () => {
+    const tools = new RecordingTools((_name, args) => ({
+      success: true,
+      output: JSON.stringify(args),
+    }));
+    const wf: Workflow = {
+      id: 'wf',
+      version: '1.0',
+      entry: {
+        id: 'main',
+        kind: 'sequence',
+        steps: [
+          { id: 'set', kind: 'set_var', name: 'callerVar', value: 'caller-side' },
+          {
+            id: 'c',
+            kind: 'call',
+            function: 'logName',
+            args: { who: { $fromVar: 'callerVar' } },
+          },
+        ],
+      },
+      functions: {
+        logName: {
+          id: 'fn',
+          kind: 'tool_call',
+          tool: 'log',
+          args: { msg: { $fromVar: 'who' } },
+        },
+      },
+    };
+    await executeWorkflow(wf, { tools });
+    // The function's tool_call resolved `who` from its local frame, which was
+    // bound from the caller's `callerVar` — so the tool sees 'caller-side'.
+    expect(tools.calls[0]?.args).toEqual({ msg: 'caller-side' });
+  });
+
+  it('function-local set_var does NOT leak into caller scope', async () => {
+    const tools = new RecordingTools(() => ({ success: true, output: 'ok' }));
+    const wf: Workflow = {
+      id: 'wf',
+      version: '1.0',
+      entry: {
+        id: 'main',
+        kind: 'sequence',
+        steps: [
+          { id: 'before', kind: 'set_var', name: 'shared', value: 'caller' },
+          { id: 'c', kind: 'call', function: 'fn' },
+        ],
+      },
+      functions: {
+        fn: {
+          id: 'fn-body',
+          kind: 'set_var',
+          name: 'shared',
+          value: 'callee',
+        },
+      },
+    };
+    const result = await executeWorkflow(wf, { tools });
+    // Caller's `shared` survives unchanged because the callee's set_var
+    // wrote to its own frame (the call boundary).
+    expect(result.vars.shared).toBe('caller');
+  });
+
+  it('return inside a function does NOT short-circuit the caller', async () => {
+    const tools = new RecordingTools((name) => ({ success: true, output: name }));
+    const wf: Workflow = {
+      id: 'wf',
+      version: '1.0',
+      entry: {
+        id: 'main',
+        kind: 'sequence',
+        steps: [
+          { id: 'c', kind: 'call', function: 'earlyReturn' },
+          // This step MUST run even though the function returned early.
+          { id: 'after', kind: 'tool_call', tool: 'after', args: {} },
+        ],
+      },
+      functions: {
+        earlyReturn: {
+          id: 'er-body',
+          kind: 'sequence',
+          steps: [
+            { id: 'r', kind: 'return', value: 'short' },
+            // Should NOT execute (skipped after return).
+            { id: 'never', kind: 'tool_call', tool: 'never', args: {} },
+          ],
+        },
+      },
+    };
+    await executeWorkflow(wf, { tools });
+    const names = tools.calls.map((c) => c.name);
+    expect(names).toEqual(['after']);
+  });
+
+  it('supports recursion (function calling itself)', async () => {
+    const tools = new RecordingTools(() => ({ success: true, output: 'ok' }));
+    const wf: Workflow = {
+      id: 'wf',
+      version: '1.0',
+      entry: { id: 'main', kind: 'call', function: 'rec', args: { depth: 3 }, saveAs: 'out' },
+      functions: {
+        rec: {
+          id: 'rec-body',
+          kind: 'branch',
+          condition: { $equals: [{ $fromVar: 'depth' }, 0] },
+          whenTrue: { id: 'base', kind: 'return', value: 'done' },
+          whenFalse: {
+            // depth > 0 — we just call recursively with the same arg to
+            // exercise the stack push/pop. Decrementing would need a math
+            // primitive we don't have; instead we count by tracking calls.
+            id: 'rec-step',
+            kind: 'sequence',
+            steps: [
+              { id: 'set', kind: 'set_var', name: 'depth', value: 0 },
+              { id: 'self', kind: 'call', function: 'rec', args: { depth: 0 }, saveAs: 'inner' },
+              { id: 'r', kind: 'return', value: { $fromVar: 'inner' } },
+            ],
+          },
+        },
+      },
+    };
+    const result = await executeWorkflow(wf, { tools });
+    expect(result.completed).toBe(true);
+    expect(result.vars.out).toBe('done');
+  });
+
+  it('enforces maxCallDepth to prevent infinite recursion', async () => {
+    const tools = new RecordingTools(() => ({ success: true, output: 'ok' }));
+    const wf: Workflow = {
+      id: 'wf',
+      version: '1.0',
+      entry: { id: 'main', kind: 'call', function: 'loop' },
+      functions: {
+        // Unconditionally calls itself — should hit the depth cap and abort.
+        loop: { id: 'l', kind: 'call', function: 'loop' },
+      },
+    };
+    const result = await executeWorkflow(wf, { tools, maxCallDepth: 5 });
+    expect(result.completed).toBe(false);
+    expect(result.error).toMatch(/depth limit/);
+  });
+
+  it('rejects calls to undefined functions', async () => {
+    const tools = new RecordingTools(() => ({ success: true, output: 'ok' }));
+    const wf: Workflow = {
+      id: 'wf',
+      version: '1.0',
+      entry: { id: 'main', kind: 'call', function: 'missing' },
+    };
+    const result = await executeWorkflow(wf, { tools });
+    expect(result.completed).toBe(false);
+    expect(result.error).toMatch(/'missing'.*not defined/);
+  });
+});
+
+describe('executeWorkflow — try / catch / finally', () => {
+  it('catch handles a body failure and the workflow continues', async () => {
+    const tools = new RecordingTools((name) => {
+      if (name === 'boom') return { success: false, error: 'kaboom' };
+      return { success: true, output: name };
+    });
+    const wf: Workflow = {
+      id: 'wf',
+      version: '1.0',
+      entry: {
+        id: 'main',
+        kind: 'sequence',
+        steps: [
+          {
+            id: 't',
+            kind: 'try',
+            body: { id: 'b', kind: 'tool_call', tool: 'boom', args: {} },
+            catch: { id: 'h', kind: 'tool_call', tool: 'recover', args: {} },
+          },
+          { id: 'after', kind: 'tool_call', tool: 'after', args: {} },
+        ],
+      },
+    };
+    const result = await executeWorkflow(wf, { tools });
+    expect(result.completed).toBe(true);
+    expect(tools.calls.map((c) => c.name)).toEqual(['boom', 'recover', 'after']);
+  });
+
+  it('exposes __error__ and __errorStepId__ inside the catch handler', async () => {
+    const tools = new RecordingTools((name, args) => {
+      if (name === 'boom') return { success: false, error: 'specific reason' };
+      return { success: true, output: JSON.stringify(args) };
+    });
+    const wf: Workflow = {
+      id: 'wf',
+      version: '1.0',
+      entry: {
+        id: 't',
+        kind: 'try',
+        body: { id: 'failing-step', kind: 'tool_call', tool: 'boom', args: {} },
+        catch: {
+          id: 'h',
+          kind: 'tool_call',
+          tool: 'log',
+          args: {
+            msg: { $fromVar: '__error__' },
+            at: { $fromVar: '__errorStepId__' },
+          },
+        },
+      },
+    };
+    await executeWorkflow(wf, { tools });
+    expect(tools.calls[1]?.args).toEqual({
+      msg: 'specific reason',
+      at: 'failing-step',
+    });
+  });
+
+  it('__error__ is NOT visible after the catch block', async () => {
+    const tools = new RecordingTools((name) => {
+      if (name === 'boom') return { success: false, error: 'x' };
+      return { success: true, output: 'ok' };
+    });
+    const wf: Workflow = {
+      id: 'wf',
+      version: '1.0',
+      entry: {
+        id: 'main',
+        kind: 'sequence',
+        steps: [
+          {
+            id: 't',
+            kind: 'try',
+            body: { id: 'b', kind: 'tool_call', tool: 'boom', args: {} },
+            catch: { id: 'h', kind: 'tool_call', tool: 'recover', args: {} },
+          },
+          {
+            id: 'check',
+            kind: 'branch',
+            condition: { $exists: '__error__' },
+            whenTrue: { id: 'leak', kind: 'tool_call', tool: 'leaked', args: {} },
+          },
+        ],
+      },
+    };
+    await executeWorkflow(wf, { tools });
+    const names = tools.calls.map((c) => c.name);
+    // 'leaked' must NOT appear because __error__ was popped with the catch frame.
+    expect(names).not.toContain('leaked');
+  });
+
+  it('try with no catch lets the failure propagate past it', async () => {
+    const tools = new RecordingTools((name) => {
+      if (name === 'boom') return { success: false, error: 'x' };
+      return { success: true, output: 'ok' };
+    });
+    const wf: Workflow = {
+      id: 'wf',
+      version: '1.0',
+      entry: {
+        id: 'main',
+        kind: 'sequence',
+        steps: [
+          {
+            id: 't',
+            kind: 'try',
+            body: { id: 'b', kind: 'tool_call', tool: 'boom', args: {} },
+          },
+          // Should NOT run — no catch absorbed the failure.
+          { id: 'after', kind: 'tool_call', tool: 'after', args: {} },
+        ],
+      },
+    };
+    const result = await executeWorkflow(wf, { tools });
+    expect(result.completed).toBe(false);
+    expect(result.error).toBe('x');
+    expect(tools.calls.map((c) => c.name)).toEqual(['boom']);
+  });
+
+  it('finally runs even when the body succeeded', async () => {
+    const tools = new RecordingTools(() => ({ success: true, output: 'ok' }));
+    const wf: Workflow = {
+      id: 'wf',
+      version: '1.0',
+      entry: {
+        id: 't',
+        kind: 'try',
+        body: { id: 'b', kind: 'tool_call', tool: 'b', args: {} },
+        finally: { id: 'f', kind: 'tool_call', tool: 'cleanup', args: {} },
+      },
+    };
+    await executeWorkflow(wf, { tools });
+    expect(tools.calls.map((c) => c.name)).toEqual(['b', 'cleanup']);
+  });
+
+  it('finally runs even when the body failed and there was no catch', async () => {
+    const tools = new RecordingTools((name) => {
+      if (name === 'boom') return { success: false, error: 'x' };
+      return { success: true, output: 'ok' };
+    });
+    const wf: Workflow = {
+      id: 'wf',
+      version: '1.0',
+      entry: {
+        id: 't',
+        kind: 'try',
+        body: { id: 'b', kind: 'tool_call', tool: 'boom', args: {} },
+        finally: { id: 'f', kind: 'tool_call', tool: 'cleanup', args: {} },
+      },
+    };
+    const result = await executeWorkflow(wf, { tools });
+    // finally ran (cleanup observed) but original failure was preserved.
+    expect(tools.calls.map((c) => c.name)).toEqual(['boom', 'cleanup']);
+    expect(result.completed).toBe(false);
+    expect(result.error).toBe('x');
+  });
+
+  it('a failure inside finally overrides a body or catch error', async () => {
+    const tools = new RecordingTools((name) => {
+      if (name === 'boom') return { success: false, error: 'body-failed' };
+      if (name === 'cleanup-bad') return { success: false, error: 'finally-failed' };
+      return { success: true, output: 'ok' };
+    });
+    const wf: Workflow = {
+      id: 'wf',
+      version: '1.0',
+      entry: {
+        id: 't',
+        kind: 'try',
+        body: { id: 'b', kind: 'tool_call', tool: 'boom', args: {} },
+        finally: { id: 'f', kind: 'tool_call', tool: 'cleanup-bad', args: {} },
+      },
+    };
+    const result = await executeWorkflow(wf, { tools });
+    expect(result.completed).toBe(false);
+    expect(result.error).toBe('finally-failed');
+  });
+});
+
+describe('executeWorkflow — scope step', () => {
+  it('set_var inside a scope does NOT leak to the parent', async () => {
+    const tools = new RecordingTools(() => ({ success: true, output: 'ok' }));
+    const wf: Workflow = {
+      id: 'wf',
+      version: '1.0',
+      entry: {
+        id: 'main',
+        kind: 'sequence',
+        steps: [
+          { id: 'init', kind: 'set_var', name: 'a', value: 'outer' },
+          {
+            id: 's',
+            kind: 'scope',
+            body: {
+              id: 'inner',
+              kind: 'sequence',
+              steps: [
+                { id: 'shadow', kind: 'set_var', name: 'a', value: 'inner-shadow' },
+                { id: 'newvar', kind: 'set_var', name: 'b', value: 'inner-only' },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const result = await executeWorkflow(wf, { tools });
+    expect(result.vars.a).toBe('outer');
+    expect(result.vars.b).toBeUndefined();
+  });
+
+  it('reads inside a scope still see outer variables (chain lookup)', async () => {
+    const tools = new RecordingTools((_name, args) => ({
+      success: true,
+      output: JSON.stringify(args),
+    }));
+    const wf: Workflow = {
+      id: 'wf',
+      version: '1.0',
+      entry: {
+        id: 'main',
+        kind: 'sequence',
+        steps: [
+          { id: 'init', kind: 'set_var', name: 'outer', value: 'visible' },
+          {
+            id: 's',
+            kind: 'scope',
+            body: {
+              id: 'use-outer',
+              kind: 'tool_call',
+              tool: 'log',
+              args: { x: { $fromVar: 'outer' } },
+            },
+          },
+        ],
+      },
+    };
+    await executeWorkflow(wf, { tools });
+    expect(tools.calls[0]?.args).toEqual({ x: 'visible' });
+  });
+});
+
 describe('evalCondition', () => {
   it('$var reads from the bag', () => {
     expect(evalCondition({ $var: 'x' }, { x: true })).toBe(true);

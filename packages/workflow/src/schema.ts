@@ -47,18 +47,87 @@ export interface BranchStep {
   whenFalse?: WorkflowStep;
 }
 
+/**
+ * Invokes a named function declared in `Workflow.functions`. Each entry of
+ * `args` is resolved (so `{ $fromVar: 'x' }` works) and bound as a local
+ * variable in the function's fresh scope frame. The function returns either
+ * via an explicit `return` step or implicitly (returnValue=undefined) when
+ * its body completes. The returned value is written into the caller's scope
+ * under `saveAs`, when provided.
+ */
+export interface CallStep {
+  id: string;
+  kind: 'call';
+  function: string;
+  args?: Record<string, unknown>;
+  saveAs?: string;
+}
+
+/**
+ * Sets the current call frame's return value and short-circuits the rest of
+ * the function body. `value` is resolved against the current scope chain
+ * (so `{ $fromVar: 'x' }` works just like in tool_call args).
+ *
+ * `return` outside a function call still works — it bubbles up through the
+ * entry's body and ends the workflow. The return value is discarded in that
+ * case (no `saveAs` available at the top level).
+ */
+export interface ReturnStep {
+  id: string;
+  kind: 'return';
+  value?: unknown;
+}
+
+/**
+ * try / catch / finally. The catch handler runs in a fresh scope frame that
+ * exposes:
+ *   - `__error__`         — the failed step's error message (string)
+ *   - `__errorStepId__`   — the failed step's id (string)
+ * If the body succeeds, neither `catch` nor `finally`'s recovery semantics
+ * apply — `finally` still runs, but on a clean state.
+ */
+export interface TryStep {
+  id: string;
+  kind: 'try';
+  body: WorkflowStep;
+  catch?: WorkflowStep;
+  finally?: WorkflowStep;
+}
+
+/**
+ * Lexical scope. Pushes a fresh frame on entry, pops on exit. `set_var` and
+ * `tool_call.saveAs` writes within `body` go to the inner frame and do NOT
+ * leak to the parent. Reads chain inner→outer, so callers' variables remain
+ * visible.
+ */
+export interface ScopeStep {
+  id: string;
+  kind: 'scope';
+  body: WorkflowStep;
+}
+
 export type WorkflowStep =
   | ToolCallStep
   | SetVarStep
   | SequenceStep
   | ParallelStep
-  | BranchStep;
+  | BranchStep
+  | CallStep
+  | ReturnStep
+  | TryStep
+  | ScopeStep;
 
 export interface Workflow {
   id: string;
   name?: string;
   version: string;
   entry: WorkflowStep;
+  /**
+   * Named procedures callable via `call` steps. Each value is the function
+   * body — typically a `sequence` or a single step. Function bodies execute
+   * in a fresh scope frame containing the caller's bound `args`.
+   */
+  functions?: Record<string, WorkflowStep>;
 }
 
 /**
@@ -77,6 +146,14 @@ export function validateWorkflow(value: unknown): Workflow {
     entry,
   };
   if (typeof wf['name'] === 'string') result.name = wf['name'];
+  if (wf['functions'] !== undefined) {
+    if (!isObject(wf['functions'])) throw new Error('workflow.functions must be an object');
+    const fns: Record<string, WorkflowStep> = {};
+    for (const [name, body] of Object.entries(wf['functions'])) {
+      fns[name] = validateStep(body, `functions.${name}`);
+    }
+    result.functions = fns;
+  }
   return result;
 }
 
@@ -125,6 +202,36 @@ function validateStep(value: unknown, path: string): WorkflowStep {
         step.whenFalse = validateStep(s['whenFalse'], `${path}.whenFalse`);
       }
       return step;
+    }
+    case 'call': {
+      if (typeof s['function'] !== 'string') throw new Error(`${path}: call.function required`);
+      const step: CallStep = {
+        id: s['id'],
+        kind: 'call',
+        function: s['function'],
+      };
+      if (s['args'] !== undefined) {
+        if (!isObject(s['args'])) throw new Error(`${path}: call.args must be an object`);
+        step.args = s['args'];
+      }
+      if (typeof s['saveAs'] === 'string') step.saveAs = s['saveAs'];
+      return step;
+    }
+    case 'return': {
+      const step: ReturnStep = { id: s['id'], kind: 'return' };
+      if (s['value'] !== undefined) step.value = s['value'];
+      return step;
+    }
+    case 'try': {
+      const body = validateStep(s['body'], `${path}.body`);
+      const step: TryStep = { id: s['id'], kind: 'try', body };
+      if (s['catch'] !== undefined) step.catch = validateStep(s['catch'], `${path}.catch`);
+      if (s['finally'] !== undefined) step.finally = validateStep(s['finally'], `${path}.finally`);
+      return step;
+    }
+    case 'scope': {
+      const body = validateStep(s['body'], `${path}.body`);
+      return { id: s['id'], kind: 'scope', body };
     }
     default:
       throw new Error(`${path}: unknown step kind '${String(s['kind'])}'`);

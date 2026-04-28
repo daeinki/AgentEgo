@@ -11,7 +11,8 @@
 - 🟢 **#4 replan 트리거 #3 (egoRelevance>0.8 + goalUpdates)** — EGO `cognition` + `goalUpdates` 를 metadata → `ReasoningContext.egoCognition/goalUpdates` 로 전달. `PlanExecuteExecutor` 가 초기 plan 생성 직후 조건 충족 시 재계획 1회 발화 (reason=`goal_updates_high_relevance`, `replanLimit` 공유). 단위 테스트 5건 신규 추가, 전체 agent-worker suite 116 tests green. 커밋 `c88aba0`.
 - 🟢 **#5 ChannelRegistry 구현 (option a)** — `PlatformChannelRegistry` 신규 (`packages/control-plane/src/gateway/`). register/deregister + recordEvent/recordError/updateSessionCount/refreshHealth. platform.ts 가 WebChat 부팅 시 등록, onMessage/catch 에서 이벤트·에러 피드. `channels.list/status` RPC 가 실 데이터 반환. 단위 테스트 9건. 커밋 `a93b65a`.
 - 🟢 **#6 Scheduler / CronRegistry 구현 (option B)** — `packages/scheduler/` 신규 (node-cron + workflow deps). CronTask discriminated union (chat/bash/workflow) + TaskRunner 인터페이스. ChatTaskRunner 는 platform handler 직접 호출 (EGO 자동 경유), BashTaskRunner 는 ToolSandbox + ownerPolicy 경유, WorkflowTaskRunner 는 executeWorkflow 래핑. tasks.json JSON5 스타일, 단일동시성 (in-flight 는 skip/runNow 거절), log-and-continue. `cron.list/runNow` RPC 가 실 데이터 반환. 단위 테스트 22건. 커밋 `d05a7c0`.
-- 🟢 **#7 planner JSON 모드** — `agent-worker/CompletionRequest` 에 `responseFormat?: { type: 'json_object' \| 'text' }` 추가. OpenAI 어댑터는 native `response_format` 패스스루, Anthropic 은 assistant `{` prefill + 첫 text_delta 에 `{` prepend 로 prompt-only 회귀 위험 제거. `PlanExecuteExecutor` 의 3개 planner 사이트 모두 json_object 요청 (합성은 텍스트 유지). 단위 테스트 10건 (anthropic 4 + openai 3 + plan-execute 3), agent-worker suite 143/143 green.
+- 🟢 **#7 planner JSON 모드** — `agent-worker/CompletionRequest` 에 `responseFormat?: { type: 'json_object' \| 'text' }` 추가. OpenAI 어댑터는 native `response_format` 패스스루, Anthropic 은 assistant `{` prefill + 첫 text_delta 에 `{` prepend 로 prompt-only 회귀 위험 제거. `PlanExecuteExecutor` 의 3개 planner 사이트 모두 json_object 요청 (합성은 텍스트 유지). 단위 테스트 10건 (anthropic 4 + openai 3 + plan-execute 3), agent-worker suite 143/143 green. 커밋 `f8a7b5c`.
+- 🟢 **#8 Workflow 엔진 함수/에러핸들러/스코프** — schema 에 `CallStep` / `ReturnStep` / `TryStep` / `ScopeStep` 추가 + `Workflow.functions?: Record<string, WorkflowStep>`. engine 의 평면 `vars` 를 scope frame 스택으로 교체 (`call`/`scope`/`try.catch` 만 frame push, sequence/parallel/branch 는 비-스코프 유지로 후방호환). `__error__` / `__errorStepId__` 가 catch 프레임 한정 노출, finally 는 항상 실행 (finally 자체 실패는 우선). recursion depth limit (default 32) + return 이 caller 로 전파되지 않음 보장. 단위 테스트 16건 신규 (functions 7 + try/catch/finally 7 + scope 2), workflow suite 30/30 + scheduler 22/22 green (consumer 호환).
 
 ---
 
@@ -161,7 +162,7 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                  곁가지 패키지 (보조 · 실행기)                                │
 │  [device-node] WS 프로토콜(페어링/하트비트/푸시) ✅                           │
-│  [workflow]    선언적 DSL 인터프리터 ✅  ⚠️ 함수·에러핸들러 없음              │
+│  [workflow]    선언적 DSL 인터프리터 ✅  (call/return/try/catch/scope 포함)   │
 │  [scheduler]   ✅ node-cron + chat/bash/workflow runner, tasks.json          │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -184,7 +185,7 @@
 | Message Bus | `packages/message-bus` | ✅ (worker-pool 배포 ❌) |
 | Webapp | `packages/webapp` | ✅ (streaming 🟢 unsafeHTML 패치·브라우저 검증 대기, 자동 배선 🟢) |
 | 채널 5개 | `packages/channels/*` | ✅ / 일부 ⚠️ |
-| Workflow | `packages/workflow` | ⚠️ |
+| Workflow | `packages/workflow` | ✅ |
 | Device-node | `packages/device-node` | ✅ |
 | ChannelRegistry | `packages/control-plane/src/gateway/platform-channel-registry.ts` | ✅ |
 | Scheduler / CronRegistry | `packages/scheduler` | ✅ |
@@ -241,7 +242,7 @@
 
 ### 기능 확장
 
-- [ ] Workflow 엔진 개선 — 함수 정의/호출, 에러 핸들러, 중첩 변수 스코프
+- [x] ~~Workflow 엔진 개선 — 함수 정의/호출, 에러 핸들러, 중첩 변수 스코프~~ — 🟢 완료. `Workflow.functions?: Record<string, WorkflowStep>` + 새 step kind 4종 (`call` / `return` / `try` / `scope`). engine 의 평면 `vars` 를 scope frame 스택으로 교체 — `call`/`scope`/`try.catch` 만 frame push, 나머지 composite step 은 frame 공유 유지로 기존 워크플로우 동작 그대로. catch 프레임이 `__error__`(메시지) / `__errorStepId__` 노출, 외부로 누수 없음. finally 는 항상 실행하되 자체 실패가 body/catch 실패를 덮음. recursion depth limit (default 32, `maxCallDepth` 옵션). 단위 테스트 16건 신규, workflow 30/30 + scheduler 22/22 green.
 - [x] ~~Memory access logging~~ — 🟢 완료 (커밋 `d2d8d89`). `hybridSearchDetailed` 가 chunkId 반환 → `PalaceMemorySystem.search()` 가 `MemoryChunkStore.recordAccess()` 호출. `AGENT_MEMORY_ACCESS_LOG` 환경변수 토글 (기본 on, `=0` off). `memory_access_log` 스키마는 pre-existing, 이전 stub 은 placeholder 였음
 
 ### 문서화
