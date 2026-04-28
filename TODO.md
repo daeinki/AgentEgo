@@ -11,6 +11,7 @@
 - 🟢 **#4 replan 트리거 #3 (egoRelevance>0.8 + goalUpdates)** — EGO `cognition` + `goalUpdates` 를 metadata → `ReasoningContext.egoCognition/goalUpdates` 로 전달. `PlanExecuteExecutor` 가 초기 plan 생성 직후 조건 충족 시 재계획 1회 발화 (reason=`goal_updates_high_relevance`, `replanLimit` 공유). 단위 테스트 5건 신규 추가, 전체 agent-worker suite 116 tests green. 커밋 `c88aba0`.
 - 🟢 **#5 ChannelRegistry 구현 (option a)** — `PlatformChannelRegistry` 신규 (`packages/control-plane/src/gateway/`). register/deregister + recordEvent/recordError/updateSessionCount/refreshHealth. platform.ts 가 WebChat 부팅 시 등록, onMessage/catch 에서 이벤트·에러 피드. `channels.list/status` RPC 가 실 데이터 반환. 단위 테스트 9건. 커밋 `a93b65a`.
 - 🟢 **#6 Scheduler / CronRegistry 구현 (option B)** — `packages/scheduler/` 신규 (node-cron + workflow deps). CronTask discriminated union (chat/bash/workflow) + TaskRunner 인터페이스. ChatTaskRunner 는 platform handler 직접 호출 (EGO 자동 경유), BashTaskRunner 는 ToolSandbox + ownerPolicy 경유, WorkflowTaskRunner 는 executeWorkflow 래핑. tasks.json JSON5 스타일, 단일동시성 (in-flight 는 skip/runNow 거절), log-and-continue. `cron.list/runNow` RPC 가 실 데이터 반환. 단위 테스트 22건. 커밋 `d05a7c0`.
+- 🟢 **#7 planner JSON 모드** — `agent-worker/CompletionRequest` 에 `responseFormat?: { type: 'json_object' \| 'text' }` 추가. OpenAI 어댑터는 native `response_format` 패스스루, Anthropic 은 assistant `{` prefill + 첫 text_delta 에 `{` prepend 로 prompt-only 회귀 위험 제거. `PlanExecuteExecutor` 의 3개 planner 사이트 모두 json_object 요청 (합성은 텍스트 유지). 단위 테스트 10건 (anthropic 4 + openai 3 + plan-execute 3), agent-worker suite 143/143 green.
 
 ---
 
@@ -111,8 +112,7 @@
 │  │  [R2] ReactExecutor  ✅  (Thought/Action/Observation, 2 retry)       │   │
 │  │                                                                      │   │
 │  │  [R3] PlanExecuteExecutor  ✅                                         │   │
-│  │    ├─ planner LLM (JSON 강제 system prompt + 수동 파싱) ⚠️            │   │
-│  │    │   └─ ❌ ModelAdapter 가 response_format 미노출 → JSON mode 없음  │   │
+│  │    ├─ planner LLM (JSON mode: OpenAI native / Anthropic prefill) ✅   │   │
 │  │    ├─ replan 트리거 #1 (stepRetry 소진) ✅                            │   │
 │  │    ├─ ❌ replan 트리거 #2 (LLM judge — 비용 사유 보류)                │   │
 │  │    ├─ ❌ replan 트리거 #3 (egoRelevance>0.8 goalUpdates — 미전달)     │   │
@@ -207,7 +207,7 @@
 
 - [ ] replan 트리거 #2 (LLM judge) — 비용 사유로 보류 중, 실데이터 수집 후 재평가
 - [x] ~~replan 트리거 #3 (egoRelevance>0.8 goalUpdates)~~ — 🟢 완료. `ReasoningContext` 에 `egoCognition` + `goalUpdates` 필드 추가, `platform.ts` 가 metadata `_egoCognition`/`_egoGoalUpdates` 로 전달, `PlanExecuteExecutor` 가 초기 plan 직후 1회 재계획 (`goal_updates_high_relevance`). `replanLimit` 공유로 트리거 #1 과 합쳐도 상한 초과 없음
-- [ ] planner JSON 모드 — `ModelAdapter` 가 `response_format` 미노출, 현재 system prompt 유도 + 수동 파싱
+- [x] ~~planner JSON 모드~~ — 🟢 완료. `agent-worker/CompletionRequest` 에 `responseFormat?: { type: 'json_object' \| 'text' }` 추가. OpenAI 어댑터는 native `response_format: { type: 'json_object' }` 패스스루, Anthropic 어댑터는 assistant prefill `{` 를 messages 끝에 부착하고 첫 `text_delta` 에 `{` 를 prepend 해 caller 가 `JSON.parse()` 그대로 가능. `PlanExecuteExecutor` 의 3개 planner 호출 사이트(`callPlanner` 초기·재계획 / `applyGoalUpdateReplan`) 가 모두 json_object 요청, 합성(`synthesizeFinal`) 은 텍스트 유지. 단위 테스트 10건 신규 (anthropic 4 + openai 3 + plan-execute 3)
 - [x] ~~replan 보존 의미 매칭~~ — 🟢 완료 (커밋 `672fd31`). `StepMatcher` 인터페이스 + `EmbedderStepMatcher` 기본 구현 (threshold 0.85). `preservePriorSuccesses()` 헬퍼가 id-match 우선 + 의미 fallback. `HybridReasonerDeps.stepMatcher` 로 주입, platform.ts 가 palace 의 `embedder.embed` 공유. matcher 미주입 시 pre-v0.7 id-only 동작 유지
 
 ### 멀티에이전트 / 분산

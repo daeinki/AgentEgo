@@ -49,6 +49,7 @@ export class OpenAIAdapter implements ModelAdapter {
     const usesCompletionTokens = isNewGenModel(this.model);
     const supportsTemperature = !isReasoningModel(this.model);
 
+    const wantsJson = request.responseFormat?.type === 'json_object';
     const stream = await this.client.chat.completions.create({
       model: this.model,
       ...(usesCompletionTokens
@@ -57,6 +58,7 @@ export class OpenAIAdapter implements ModelAdapter {
       ...(supportsTemperature ? { temperature: request.temperature ?? 0.7 } : {}),
       messages,
       ...(tools && tools.length > 0 ? { tools } : {}),
+      ...(wantsJson ? { response_format: { type: 'json_object' as const } } : {}),
       stream: true,
       stream_options: { include_usage: true },
     });

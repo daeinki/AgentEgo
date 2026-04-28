@@ -586,6 +586,122 @@ describe('PlanExecuteExecutor — trigger #3 (goalUpdates + egoRelevance)', () =
   });
 });
 
+describe('PlanExecuteExecutor — planner JSON mode', () => {
+  // Adapter that records the `responseFormat` field on every stream() call
+  // so we can assert which calls opted into JSON mode.
+  class CapturingAdapter implements ModelAdapter {
+    public readonly seen: Array<{ format?: { type: 'json_object' | 'text' } }> = [];
+    private call = 0;
+    constructor(private readonly scripts: string[]) {}
+    async *stream(req: CompletionRequest): AsyncIterable<StreamChunk> {
+      this.seen.push({ format: req.responseFormat });
+      const text = this.scripts[this.call] ?? '';
+      this.call += 1;
+      yield { type: 'text_delta', text };
+      yield { type: 'usage', inputTokens: 1, outputTokens: 1 };
+      yield { type: 'done', stopReason: 'end_turn' };
+    }
+    getModelInfo() {
+      return { provider: 'mock', model: 'mock' };
+    }
+  }
+
+  it('passes responseFormat=json_object on planner calls but NOT on synthesis', async () => {
+    const planJson = JSON.stringify({
+      rationale: 'one',
+      steps: [{ id: 's1', goal: 'x', tool: 'list', args: {}, dependsOn: [] }],
+    });
+    const model = new CapturingAdapter([planJson, '최종']);
+    const reactFallback = new ReactExecutor(model);
+    const ex = new PlanExecuteExecutor(
+      model,
+      reactFallback,
+      { capabilityGuard: alwaysAllow, toolSandbox: makeSandbox(), sessionPolicy: ownerPolicy },
+    );
+    await collect(ex.run(makeCtx()));
+
+    // Two stream() calls: [0] planner, [1] synthesis.
+    expect(model.seen).toHaveLength(2);
+    expect(model.seen[0]?.format).toEqual({ type: 'json_object' });
+    expect(model.seen[1]?.format).toBeUndefined();
+  });
+
+  it('replan planner calls also request json_object', async () => {
+    const initialPlan = JSON.stringify({
+      rationale: 'first',
+      steps: [{ id: 's1', goal: 'flaky step', tool: 'flaky', args: {}, dependsOn: [] }],
+    });
+    const replanPlan = JSON.stringify({
+      rationale: 'after replan',
+      steps: [{ id: 's2', goal: 'alt', tool: 'works', args: {}, dependsOn: [] }],
+    });
+    const model = new CapturingAdapter([initialPlan, replanPlan, '복구']);
+    const sandbox: Contracts.ToolSandbox = {
+      async acquire() {
+        return { id: 'sb', status: 'ready', startedAt: nowMs(), resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } };
+      },
+      async execute(_sb, name) {
+        if (name === 'flaky') return { toolName: name, success: false, error: 'boom', durationMs: 0 };
+        return { toolName: name, success: true, output: 'ok', durationMs: 1 };
+      },
+      async release() {},
+    };
+    const reactFallback = new ReactExecutor(model);
+    const ex = new PlanExecuteExecutor(
+      model,
+      reactFallback,
+      { capabilityGuard: alwaysAllow, toolSandbox: sandbox, sessionPolicy: ownerPolicy },
+      { stepRetryLimit: 1, replanLimit: 2 },
+    );
+    await collect(ex.run(makeCtx()));
+
+    // Three calls: initial planner, replan planner, synthesis.
+    expect(model.seen).toHaveLength(3);
+    expect(model.seen[0]?.format).toEqual({ type: 'json_object' });
+    expect(model.seen[1]?.format).toEqual({ type: 'json_object' });
+    expect(model.seen[2]?.format).toBeUndefined();
+  });
+
+  it('goal-update replan planner call also requests json_object', async () => {
+    const initialPlan = JSON.stringify({
+      rationale: 'first pass',
+      steps: [{ id: 's1', goal: 'orig', tool: 'list', args: {}, dependsOn: [] }],
+    });
+    const refreshedPlan = JSON.stringify({
+      rationale: 'refreshed',
+      steps: [{ id: 's-new', goal: 'revised', tool: 'list', args: {}, dependsOn: [] }],
+    });
+    const model = new CapturingAdapter([initialPlan, refreshedPlan, '완료']);
+    const reactFallback = new ReactExecutor(model);
+    const ex = new PlanExecuteExecutor(
+      model,
+      reactFallback,
+      { capabilityGuard: alwaysAllow, toolSandbox: makeSandbox(), sessionPolicy: ownerPolicy },
+    );
+    await collect(
+      ex.run(
+        makeCtx({
+          egoCognition: {
+            relevantMemoryIndices: [],
+            relatedGoalId: null,
+            situationSummary: 's',
+            opportunities: [],
+            risks: [],
+            egoRelevance: 0.95,
+          },
+          goalUpdates: [{ goalId: 'g', progressDelta: 0.3 }],
+        }),
+      ),
+    );
+
+    // initial planner + goal-update replan + synthesis
+    expect(model.seen).toHaveLength(3);
+    expect(model.seen[0]?.format).toEqual({ type: 'json_object' });
+    expect(model.seen[1]?.format).toEqual({ type: 'json_object' });
+    expect(model.seen[2]?.format).toBeUndefined();
+  });
+});
+
 describe('PlanExecuteExecutor — replan downgrade (continued)', () => {
   it('exhausts replanLimit=2 then downgrades to ReAct with augmented user message', async () => {
     const failingPlan = JSON.stringify({

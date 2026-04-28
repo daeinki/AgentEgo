@@ -436,6 +436,7 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
       messages: prompt.messages,
       temperature: this.config.plannerTemperature ?? 0.2,
       maxTokens: this.config.plannerMaxTokens ?? 1024,
+      responseFormat: { type: 'json_object' },
     })) {
       if (chunk.type === 'text_delta') planText += chunk.text;
       else if (chunk.type === 'usage') {
@@ -498,6 +499,7 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
       messages: prompt.messages,
       temperature: this.config.plannerTemperature ?? 0.2,
       maxTokens: this.config.plannerMaxTokens ?? 1024,
+      responseFormat: { type: 'json_object' },
     })) {
       if (chunk.type === 'text_delta') planText += chunk.text;
       else if (chunk.type === 'usage') {

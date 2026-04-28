@@ -40,6 +40,19 @@ export class AnthropicAdapter implements ModelAdapter {
     const nameMap = request.tools ? buildToolNameMap(request.tools) : undefined;
     const tools = nameMap ? this.toAnthropicTools(nameMap.wireTools) : undefined;
 
+    // Anthropic has no native `response_format: json_object`. The standard
+    // technique is **assistant prefill**: appending an `assistant` message
+    // whose content is `{` forces the model to continue from that token, so
+    // its first emitted character is guaranteed to be inside a JSON object.
+    // We emit the prefill char ourselves at the start of the stream so
+    // downstream `JSON.parse()` sees a complete object without the caller
+    // having to know about prefill.
+    const wantsJson = request.responseFormat?.type === 'json_object';
+    const PREFILL = '{';
+    if (wantsJson) {
+      messages.push({ role: 'assistant', content: PREFILL });
+    }
+
     const params: Anthropic.MessageCreateParams = {
       model: this.model,
       max_tokens: request.maxTokens ?? this.defaultMaxTokens,
@@ -58,6 +71,7 @@ export class AnthropicAdapter implements ModelAdapter {
 
     const stream = this.client.messages.stream(params);
 
+    let prefillEmitted = !wantsJson;
     for await (const event of stream) {
       if (event.type === 'content_block_start') {
         const block = event.content_block;
@@ -68,7 +82,12 @@ export class AnthropicAdapter implements ModelAdapter {
       } else if (event.type === 'content_block_delta') {
         const delta = event.delta;
         if (delta.type === 'text_delta') {
-          yield { type: 'text_delta', text: delta.text };
+          if (!prefillEmitted) {
+            yield { type: 'text_delta', text: PREFILL + delta.text };
+            prefillEmitted = true;
+          } else {
+            yield { type: 'text_delta', text: delta.text };
+          }
         } else if (delta.type === 'input_json_delta') {
           yield {
             type: 'tool_call_delta',

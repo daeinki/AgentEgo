@@ -8,6 +8,18 @@ export interface CompletionRequest {
   maxTokens?: number;
   temperature?: number;
   tools?: ToolDefinition[];
+  /**
+   * Optional structured-output hint for the planner / EGO-style callers that
+   * need a JSON-only reply. When `'json_object'`:
+   *   - OpenAI: passed through as native `response_format: { type: 'json_object' }`,
+   *     guaranteeing syntactically valid JSON.
+   *   - Anthropic: no native JSON mode — the adapter prefills the assistant
+   *     turn with `{` so the first token is forced to start an object, and
+   *     the prefill char is reattached to the streamed text so callers can
+   *     `JSON.parse()` the concatenated result without special-casing.
+   * Schema validity is still the caller's job (see `parsePlan`).
+   */
+  responseFormat?: { type: 'json_object' | 'text' };
 }
 
 export interface CompletionMessage {
