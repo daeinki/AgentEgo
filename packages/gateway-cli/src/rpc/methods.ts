@@ -125,13 +125,15 @@ export function buildRpcMethods(deps: RpcDeps): Record<string, RpcHandler> {
       };
 
       const g3Start = Date.now();
+      const textPreview = text.slice(0, 80);
       deps.traceLogger?.event({
         traceId: msg.traceId,
         block: 'G3',
         event: 'enter',
         timestamp: g3Start,
+        summary: `chat.send: "${textPreview}" (${channelIdOverride ?? 'rpc'}/${conversationId} from ${senderId})`,
         payload: {
-          textPreview: text.slice(0, 80),
+          textPreview,
           conversationId,
           channelId: channelIdOverride ?? 'rpc',
           senderId,
@@ -202,6 +204,7 @@ export function buildRpcMethods(deps: RpcDeps): Record<string, RpcHandler> {
           event: 'error',
           timestamp: Date.now(),
           durationMs: Date.now() - g3Start,
+          summary: `chat.send failed after ${Date.now() - g3Start}ms: ${(err as Error).message.slice(0, 60)}`,
           error: (err as Error).message,
         });
         // ADR-010 §3.1.4.7: only errorCode is forwarded, never the raw message.
@@ -212,6 +215,11 @@ export function buildRpcMethods(deps: RpcDeps): Record<string, RpcHandler> {
       emitPhase('finalizing');
       emitPhase('complete');
 
+      const totalMs = Date.now() - g3Start;
+      const tokSummary =
+        usage.inputTokens !== undefined && usage.outputTokens !== undefined
+          ? ` (${usage.inputTokens} in / ${usage.outputTokens} out tokens${usage.costUsd !== undefined ? `, $${usage.costUsd.toFixed(4)}` : ''})`
+          : '';
       deps.traceLogger?.event({
         traceId: msg.traceId,
         sessionId,
@@ -219,7 +227,8 @@ export function buildRpcMethods(deps: RpcDeps): Record<string, RpcHandler> {
         block: 'G3',
         event: 'exit',
         timestamp: Date.now(),
-        durationMs: Date.now() - g3Start,
+        durationMs: totalMs,
+        summary: `chat.send completed in ${totalMs}ms${tokSummary}`,
         payload: {
           inputTokens: usage.inputTokens,
           outputTokens: usage.outputTokens,

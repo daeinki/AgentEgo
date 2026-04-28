@@ -154,6 +154,10 @@ trace
   .description('Print the block-level timeline for a trace')
   .argument('<traceId>', 'Trace id (e.g. trc-…)')
   .option('--format <fmt>', 'Output format: text | json', 'text')
+  .option('--wall-clock', 'Show absolute wall-clock (HH:mm:ss.SSS) instead of offset')
+  .option('--verbose', 'Dump raw payload JSON under each event')
+  .option('--filter <block>', 'Only show events from one block (e.g. M1, X1, R3)')
+  .option('--no-color', 'Disable ANSI color (default: auto-detect TTY)')
   .action(traceShowCommand);
 
 trace
@@ -161,6 +165,10 @@ trace
   .description('Show the most recent trace (optionally within a session)')
   .option('-s, --session <id>', 'Filter by session id')
   .option('--format <fmt>', 'Output format: text | json', 'text')
+  .option('--wall-clock', 'Show absolute wall-clock (HH:mm:ss.SSS) instead of offset')
+  .option('--verbose', 'Dump raw payload JSON under each event')
+  .option('--filter <block>', 'Only show events from one block (e.g. M1, X1, R3)')
+  .option('--no-color', 'Disable ANSI color (default: auto-detect TTY)')
   .action(traceLastCommand);
 
 trace

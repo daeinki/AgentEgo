@@ -8,14 +8,20 @@ interface TraceListOptions {
   limit?: string;
 }
 
-interface TraceShowOptions {
+interface TraceRenderOptions {
   format?: 'text' | 'json';
+  /** When true, render absolute wall-clock (HH:mm:ss.SSS) instead of offset. */
+  wallClock?: boolean;
+  /** When true, dump the raw payload JSON pretty-printed under each row. */
+  verbose?: boolean;
+  /** Filter to a single block (G3, P1, E1, W1, R1, R2, R3, M1, X1, S1, …). */
+  filter?: string;
+  /** Disable ANSI color (default: auto-detect TTY). */
+  noColor?: boolean;
 }
 
-interface TraceLastOptions {
-  session?: string;
-  format?: 'text' | 'json';
-}
+type TraceShowOptions = TraceRenderOptions;
+type TraceLastOptions = TraceRenderOptions & { session?: string };
 
 interface TraceExportOptions {
   format?: 'json' | 'ndjson';
@@ -69,11 +75,19 @@ export async function traceShowCommand(
     console.log(`[trace] no events for traceId ${traceId}.`);
     return;
   }
-  if (options.format === 'json') {
-    console.log(JSON.stringify(events, null, 2));
+  const filtered =
+    options.filter !== undefined
+      ? events.filter((e) => e.block === options.filter)
+      : events;
+  if (filtered.length === 0) {
+    console.log(`[trace] no events match block='${options.filter}' for traceId ${traceId}.`);
     return;
   }
-  renderTimeline(events);
+  if (options.format === 'json') {
+    console.log(JSON.stringify(filtered, null, 2));
+    return;
+  }
+  renderTimeline(filtered, options);
 }
 
 export async function traceLastCommand(options: TraceLastOptions): Promise<void> {
@@ -82,7 +96,12 @@ export async function traceLastCommand(options: TraceLastOptions): Promise<void>
     console.log('[trace] no traces yet.');
     return;
   }
-  await traceShowCommand(traceId, { format: options.format ?? 'text' });
+  const showOpts: TraceShowOptions = { format: options.format ?? 'text' };
+  if (options.wallClock) showOpts.wallClock = true;
+  if (options.verbose) showOpts.verbose = true;
+  if (options.filter !== undefined) showOpts.filter = options.filter;
+  if (options.noColor) showOpts.noColor = true;
+  await traceShowCommand(traceId, showOpts);
 }
 
 export async function traceExportCommand(
@@ -127,18 +146,102 @@ function formatListRow(r: TraceSummary): string {
   ].join('  ');
 }
 
-function renderTimeline(events: Contracts.TraceEvent[]): void {
+function renderTimeline(
+  events: Contracts.TraceEvent[],
+  options: TraceRenderOptions = {},
+): void {
   const t0 = events[0]!.timestamp;
+  const startedAt = new Date(t0).toISOString().slice(0, 19).replace('T', ' ');
+  // ANSI color is on by default in TTY; fall back to plain when piped or
+  // explicitly disabled (--no-color).
+  const useColor = !options.noColor && process.stdout.isTTY === true;
+  const c = makePalette(useColor);
+
+  console.log(c.dim(`# trace started at ${startedAt} UTC (${events.length} events)`));
   for (const ev of events) {
-    const offsetMs = ev.timestamp - t0;
-    const offset = offsetMs < 1000 ? `${offsetMs}ms` : `${(offsetMs / 1000).toFixed(2)}s`;
-    const dur = ev.durationMs !== undefined ? ` (${ev.durationMs}ms)` : '';
-    const payload = ev.payload ? ` ${summarizePayload(ev.payload)}` : '';
-    const err = ev.error ? ` error="${ev.error}"` : '';
+    const timeCol = options.wallClock
+      ? formatWallClock(ev.timestamp)
+      : (() => {
+          const offsetMs = ev.timestamp - t0;
+          return offsetMs < 1000 ? `${offsetMs}ms` : `${(offsetMs / 1000).toFixed(2)}s`;
+        })();
+    const dur =
+      ev.durationMs !== undefined ? c.dim(` (${ev.durationMs}ms)`) : '';
+    const block = c.block(ev.block, pad(ev.block, 3));
+    const eventName = c.event(ev.event, pad(ev.event, 22));
+    // Prefer the emitter-supplied summary; fall back to a payload digest so
+    // pre-summary events (older DB rows, third-party emitters) still render.
+    const detail = ev.summary
+      ? ` ${ev.summary}`
+      : ev.payload
+        ? ` ${c.dim(summarizePayload(ev.payload))}`
+        : '';
+    const err = ev.error ? c.error(` error="${ev.error}"`) : '';
+    const timeWidth = options.wallClock ? 12 : 7;
     console.log(
-      `[${pad(offset, 7)}]  ${pad(ev.block, 3)}  ${pad(ev.event, 22)}${dur}${payload}${err}`,
+      `${c.dim('[')}${pad(timeCol, timeWidth)}${c.dim(']')}  ${block}  ${eventName}${dur}${detail}${err}`,
     );
+    if (options.verbose && ev.payload) {
+      const json = JSON.stringify(ev.payload, null, 2)
+        .split('\n')
+        .map((l) => `    ${c.dim(l)}`)
+        .join('\n');
+      console.log(json);
+    }
   }
+}
+
+function formatWallClock(epochMs: number): string {
+  const d = new Date(epochMs);
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  const ss = String(d.getUTCSeconds()).padStart(2, '0');
+  const ms = String(d.getUTCMilliseconds()).padStart(3, '0');
+  return `${hh}:${mm}:${ss}.${ms}`;
+}
+
+interface Palette {
+  dim(s: string): string;
+  error(s: string): string;
+  block(blockId: string, padded: string): string;
+  event(eventName: string, padded: string): string;
+}
+
+function makePalette(useColor: boolean): Palette {
+  if (!useColor) {
+    return {
+      dim: (s) => s,
+      error: (s) => s,
+      block: (_b, p) => p,
+      event: (_e, p) => p,
+    };
+  }
+  // ANSI 8-color codes — bright variants for readability on dark themes.
+  const RESET = '\x1b[0m';
+  const DIM = '\x1b[2m';
+  const RED = '\x1b[31m';
+  const blockColors: Record<string, string> = {
+    G3: '\x1b[36m', // cyan — gateway
+    C1: '\x1b[35m', // magenta — control
+    P1: '\x1b[34m', // blue — platform
+    E1: '\x1b[33m', // yellow — EGO
+    W1: '\x1b[32m', // green — runner
+    R1: '\x1b[92m', // bright green — reasoner mode select
+    R2: '\x1b[92m',
+    R3: '\x1b[92m',
+    M1: '\x1b[95m', // bright magenta — model
+    X1: '\x1b[94m', // bright blue — memory
+    S1: '\x1b[93m', // bright yellow — sandbox
+  };
+  return {
+    dim: (s) => `${DIM}${s}${RESET}`,
+    error: (s) => `${RED}${s}${RESET}`,
+    block: (blockId, padded) => {
+      const color = blockColors[blockId] ?? '';
+      return color ? `${color}${padded}${RESET}` : padded;
+    },
+    event: (_eventName, padded) => padded,
+  };
 }
 
 function summarizePayload(p: Record<string, unknown>): string {

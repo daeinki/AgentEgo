@@ -52,6 +52,9 @@ export class RuleRouter implements RouterContract {
       block: 'C1',
       event: 'decision',
       timestamp: Date.now(),
+      summary: matched
+        ? `routed to agent='${agentId}' via rule '${matched.id}' (priority=${matched.priority})`
+        : `routed to default agent='${agentId}' (no rule matched)`,
       payload: {
         matchedRuleId: matched?.id ?? null,
         priority: matched?.priority ?? 0,

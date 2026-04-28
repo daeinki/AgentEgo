@@ -1,5 +1,6 @@
 export type {
   ModelAdapter,
+  ModelTraceContext,
   CompletionRequest,
   CompletionMessage,
   StreamChunk,

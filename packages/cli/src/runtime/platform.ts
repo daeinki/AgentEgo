@@ -313,6 +313,7 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
           block: 'P1',
           event: 'skill_mount_error',
           timestamp: Date.now(),
+          summary: `skill '${e.skillId}' failed to mount: ${e.error.message.slice(0, 60)}`,
           payload: { skillId: e.skillId, error: e.error.message },
         });
       }
@@ -356,6 +357,7 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
             block: 'P1',
             event: 'skill_seed',
             timestamp: Date.now(),
+            summary: `skill seed: ${m.slice(0, 90)}`,
             payload: { message: m },
           }),
       },
@@ -370,6 +372,7 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
         block: 'P1',
         event: 'skill_seed_summary',
         timestamp: Date.now(),
+        summary: `skill seed summary: seeded=${seedResult.seeded.length}, upgraded=${seedResult.upgraded.length}, skipped=${seedResult.skipped.length}`,
         payload: {
           seeded: seedResult.seeded,
           upgraded: seedResult.upgraded,
@@ -446,6 +449,7 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
       block: 'P1',
       event: 'enter',
       timestamp: p1Start,
+      summary: `platform turn started (session=${ctx.sessionId}, agent=${ctx.agentId})`,
     });
     let egoActionTaken: string | undefined;
     try {
@@ -548,10 +552,12 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
         event: 'error',
         timestamp: Date.now(),
         durationMs: Date.now() - p1Start,
+        summary: `platform turn failed after ${Date.now() - p1Start}ms: ${(err as Error).message.slice(0, 60)}`,
         error: (err as Error).message,
       });
       throw err;
     } finally {
+      const totalMs = Date.now() - p1Start;
       traceLogger.event({
         traceId: ctx.traceId,
         sessionId: ctx.sessionId,
@@ -559,7 +565,8 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
         block: 'P1',
         event: 'exit',
         timestamp: Date.now(),
-        durationMs: Date.now() - p1Start,
+        durationMs: totalMs,
+        summary: `platform turn ended in ${totalMs}ms${egoActionTaken ? ` (ego=${egoActionTaken})` : ''}`,
         ...(egoActionTaken ? { payload: { egoAction: egoActionTaken } } : {}),
       });
     }

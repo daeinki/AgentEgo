@@ -38,7 +38,10 @@ export class DockerSandbox implements ToolSandbox {
     private readonly config: DockerSandboxConfig,
   ) {}
 
-  async acquire(policy: SessionPolicy): Promise<SandboxInstance> {
+  async acquire(
+    policy: SessionPolicy,
+    trace?: Contracts.TraceCallContext,
+  ): Promise<SandboxInstance> {
     const instance: SandboxInstance = {
       id: `dockerbox-${generateId()}`,
       status: 'ready',
@@ -46,6 +49,18 @@ export class DockerSandbox implements ToolSandbox {
       resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 },
     };
     this.instances.set(instance.id, { instance, policy });
+    if (trace) {
+      trace.traceLogger.event({
+        traceId: trace.traceId,
+        ...(trace.sessionId !== undefined ? { sessionId: trace.sessionId } : {}),
+        ...(trace.agentId !== undefined ? { agentId: trace.agentId } : {}),
+        block: 'S1',
+        event: 'sandbox_acquired',
+        timestamp: Date.now(),
+        summary: `docker sandbox '${instance.id}' acquired (trustLevel=${policy.trustLevel})`,
+        payload: { sandboxId: instance.id, kind: 'docker', trustLevel: policy.trustLevel },
+      });
+    }
     return instance;
   }
 
@@ -54,6 +69,7 @@ export class DockerSandbox implements ToolSandbox {
     toolName: string,
     args: unknown,
     timeoutMs: number,
+    trace?: Contracts.TraceCallContext,
   ): Promise<ToolResult> {
     const registered = this.instances.get(sandbox.id);
     if (!registered) {
@@ -64,38 +80,74 @@ export class DockerSandbox implements ToolSandbox {
       return { toolName, success: false, error: `unknown tool: ${toolName}`, durationMs: 0 };
     }
 
-    // DockerTool path: run inside a container.
+    let result: ToolResult;
+    let containerized = false;
     if (isDockerTool(tool)) {
-      return this.executeInContainer(tool, args, registered.policy, timeoutMs);
+      containerized = true;
+      result = await this.executeInContainer(tool, args, registered.policy, timeoutMs);
+    } else {
+      // Plain AgentTool fallback: in-process execution (for host-native tools).
+      registered.instance.status = 'running';
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const start = performance.now();
+      try {
+        result = await tool.execute(args, {
+          sessionId: '',
+          agentId: '',
+          traceId: '',
+          signal: controller.signal,
+        });
+      } catch (err) {
+        result = {
+          toolName,
+          success: false,
+          error: (err as Error).message,
+          durationMs: performance.now() - start,
+        };
+      } finally {
+        clearTimeout(timer);
+        registered.instance.status = 'ready';
+      }
     }
-
-    // Plain AgentTool fallback: in-process execution (for host-native tools).
-    registered.instance.status = 'running';
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const start = performance.now();
-    try {
-      return await tool.execute(args, {
-        sessionId: '',
-        agentId: '',
-        traceId: '',
-        signal: controller.signal,
+    if (trace) {
+      trace.traceLogger.event({
+        traceId: trace.traceId,
+        ...(trace.sessionId !== undefined ? { sessionId: trace.sessionId } : {}),
+        ...(trace.agentId !== undefined ? { agentId: trace.agentId } : {}),
+        block: 'S1',
+        event: 'sandbox_executed',
+        timestamp: Date.now(),
+        durationMs: Math.round(result.durationMs),
+        summary:
+          `docker exec '${toolName}' (${containerized ? 'container' : 'host-fallback'}) → ${result.success ? 'ok' : 'error'} in ${Math.round(result.durationMs)}ms` +
+          (result.success ? '' : `: ${(result.error ?? 'unknown').slice(0, 40)}`),
+        payload: {
+          sandboxId: sandbox.id,
+          tool: toolName,
+          containerized,
+          success: result.success,
+          ...(result.error !== undefined ? { error: result.error } : {}),
+        },
       });
-    } catch (err) {
-      return {
-        toolName,
-        success: false,
-        error: (err as Error).message,
-        durationMs: performance.now() - start,
-      };
-    } finally {
-      clearTimeout(timer);
-      registered.instance.status = 'ready';
     }
+    return result;
   }
 
-  async release(sandbox: SandboxInstance): Promise<void> {
+  async release(sandbox: SandboxInstance, trace?: Contracts.TraceCallContext): Promise<void> {
     this.instances.delete(sandbox.id);
+    if (trace) {
+      trace.traceLogger.event({
+        traceId: trace.traceId,
+        ...(trace.sessionId !== undefined ? { sessionId: trace.sessionId } : {}),
+        ...(trace.agentId !== undefined ? { agentId: trace.agentId } : {}),
+        block: 'S1',
+        event: 'sandbox_released',
+        timestamp: Date.now(),
+        summary: `docker sandbox '${sandbox.id}' released`,
+        payload: { sandboxId: sandbox.id, kind: 'docker' },
+      });
+    }
   }
 
   private async executeInContainer(

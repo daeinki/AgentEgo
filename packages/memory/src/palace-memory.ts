@@ -73,8 +73,13 @@ export class PalaceMemorySystem implements MemorySystem {
     this.ready = false;
   }
 
-  async search(query: string, ctx: SearchContext): Promise<MemorySearchResult[]> {
+  async search(
+    query: string,
+    ctx: SearchContext,
+    trace?: Contracts.TraceCallContext,
+  ): Promise<MemorySearchResult[]> {
     this.assertReady();
+    const startedAt = Date.now();
     const hits = await hybridSearchDetailed(query, ctx, this.store, this.embedder, this.hybridWeights);
     // Access logging: bump each returned chunk's access_count + append a
     // memory_access_log row. Enabled by default; `AGENT_MEMORY_ACCESS_LOG=0`
@@ -85,16 +90,64 @@ export class PalaceMemorySystem implements MemorySystem {
         this.store.recordAccess(chunkId, ctx.sessionId, query, result.relevance.combinedScore);
       }
     }
+    if (trace) {
+      const top = hits[0]?.result.relevance.combinedScore;
+      const queryPreview = query.length > 40 ? `${query.slice(0, 40)}…` : query;
+      trace.traceLogger.event({
+        traceId: trace.traceId,
+        ...(trace.sessionId !== undefined ? { sessionId: trace.sessionId } : {}),
+        ...(trace.agentId !== undefined ? { agentId: trace.agentId } : {}),
+        block: 'X1',
+        event: 'memory_searched',
+        timestamp: Date.now(),
+        durationMs: Date.now() - startedAt,
+        summary:
+          `memory.search "${queryPreview}" → ${hits.length} hit(s)` +
+          (typeof top === 'number' ? `, top score=${top.toFixed(3)}` : '') +
+          ` in ${Date.now() - startedAt}ms`,
+        payload: {
+          query: queryPreview,
+          hitCount: hits.length,
+          topScores: hits.slice(0, 3).map((h) => h.result.relevance.combinedScore),
+          maxResults: ctx.maxResults,
+          minRelevanceScore: ctx.minRelevanceScore,
+        },
+      });
+    }
     return hits.map((h) => h.result);
   }
 
-  async ingest(turn: ConversationTurn): Promise<IngestResult> {
+  async ingest(
+    turn: ConversationTurn,
+    trace?: Contracts.TraceCallContext,
+  ): Promise<IngestResult> {
     this.assertReady();
-    return ingestTurn(turn, {
+    const startedAt = Date.now();
+    const result = await ingestTurn(turn, {
       layout: this.layout,
       store: this.store,
       embedder: this.embedder,
     });
+    if (trace) {
+      trace.traceLogger.event({
+        traceId: trace.traceId,
+        ...(trace.sessionId !== undefined ? { sessionId: trace.sessionId } : {}),
+        ...(trace.agentId !== undefined ? { agentId: trace.agentId } : {}),
+        block: 'X1',
+        event: 'memory_ingested',
+        timestamp: Date.now(),
+        durationMs: Date.now() - startedAt,
+        summary:
+          `memory.ingest +${result.chunksAdded} new${result.chunksUpdated > 0 ? `, ~${result.chunksUpdated} updated` : ''}` +
+          ` (wings: ${result.classifications.join(', ') || 'none'}) in ${Date.now() - startedAt}ms`,
+        payload: {
+          chunksAdded: result.chunksAdded,
+          chunksUpdated: result.chunksUpdated,
+          wings: result.classifications,
+        },
+      });
+    }
+    return result;
   }
 
   async classify(content: string): Promise<ClassificationResult> {

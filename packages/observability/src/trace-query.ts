@@ -89,9 +89,13 @@ export class TraceQuery {
 
   /** Ordered full timeline for a single trace. */
   getTraceTimeline(traceId: string): TraceEvent[] {
+    // Pre-`summary` databases lack the column; we left-join via COALESCE on a
+    // computed expression. Newer DBs always have the column populated.
+    const hasSummaryColumn = this.tableHasColumn('trace_events', 'summary');
+    const summarySelect = hasSummaryColumn ? 'summary' : 'NULL AS summary';
     const sql = `
       SELECT trace_id, session_id, agent_id, block, event, timestamp,
-             duration_ms, payload, error
+             duration_ms, ${summarySelect}, payload, error
       FROM trace_events
       WHERE trace_id = ?
       ORDER BY id ASC
@@ -104,6 +108,7 @@ export class TraceQuery {
       event: string;
       timestamp: number;
       duration_ms: number | null;
+      summary: string | null;
       payload: string | null;
       error: string | null;
     }[];
@@ -117,10 +122,22 @@ export class TraceQuery {
       if (r.session_id !== null) ev.sessionId = r.session_id;
       if (r.agent_id !== null) ev.agentId = r.agent_id;
       if (r.duration_ms !== null) ev.durationMs = r.duration_ms;
+      if (r.summary !== null) ev.summary = r.summary;
       if (r.payload !== null) ev.payload = JSON.parse(r.payload) as Record<string, unknown>;
       if (r.error !== null) ev.error = r.error;
       return ev;
     });
+  }
+
+  private tableHasColumn(table: string, column: string): boolean {
+    try {
+      const cols = this.db
+        .prepare(`PRAGMA table_info(${table})`)
+        .all() as Array<{ name: string }>;
+      return cols.some((c) => c.name === column);
+    } catch {
+      return false;
+    }
   }
 
   /** Most recent traceId (optionally filtered by session), or null. */

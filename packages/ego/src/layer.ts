@@ -188,6 +188,7 @@ export class EgoLayer {
         block: 'E1',
         event: 'fast_exit',
         timestamp: nowMs(),
+        summary: `EGO fast-exit: state=off, passing through unchanged`,
         payload: { reason: 'state_off' },
       });
       return {
@@ -217,6 +218,7 @@ export class EgoLayer {
         block: 'E1',
         event: 'fast_exit',
         timestamp: nowMs(),
+        summary: `EGO fast-exit (rules ~16ms): intent=${normalized.intent.primary}, complexity=${normalized.complexity} → passthrough`,
         payload: {
           reason: 'fast_path',
           intent: normalized.intent.primary,
@@ -263,6 +265,7 @@ export class EgoLayer {
       block: 'E1',
       event: 'deep_path_start',
       timestamp: nowMs(),
+      summary: `EGO deep path entered: intent=${normalized.intent.primary}, complexity=${normalized.complexity}, urgency=${normalized.urgency}`,
       payload: {
         intent: normalized.intent.primary,
         complexity: normalized.complexity,
@@ -276,6 +279,7 @@ export class EgoLayer {
         'ego.pipeline',
       );
       record.pipelineMs = nowMs() - pipelineStart;
+      const conf = record.metadata?.confidenceScore;
       this.deps.traceLogger?.event({
         traceId: msg.traceId,
         sessionId: params.sessionId,
@@ -284,6 +288,11 @@ export class EgoLayer {
         event: 'decision',
         timestamp: nowMs(),
         durationMs: record.pipelineMs,
+        summary:
+          `EGO → ${record.decision.action}` +
+          (typeof conf === 'number' ? ` (conf=${conf.toFixed(2)})` : '') +
+          (record.costUsd > 0 ? `, $${record.costUsd.toFixed(4)}` : '') +
+          ` in ${record.pipelineMs}ms`,
         payload: {
           action: record.decision.action,
           confidence: record.metadata?.confidenceScore ?? null,
@@ -312,6 +321,7 @@ export class EgoLayer {
         event: 'error',
         timestamp: nowMs(),
         durationMs: nowMs() - pipelineStart,
+        summary: `EGO deep path failed (tag=${tag}): ${(err as Error).message.slice(0, 60)}`,
         error: (err as Error).message,
         payload: buildErrorPayload(err, tag),
       });
@@ -362,6 +372,7 @@ export class EgoLayer {
       ...(params.recentHistory ? { recentHistory: params.recentHistory } : {}),
       memoryCache: this.memoryCache as Map<string, never>,
       ...(this.deps.audit ? { audit: this.deps.audit } : {}),
+      ...(this.deps.traceLogger ? { traceLogger: this.deps.traceLogger } : {}),
       traceId: signal.traceId,
     });
 

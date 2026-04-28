@@ -2,6 +2,29 @@
  * LLM Model Adapter — abstract interface for streaming completions.
  */
 
+import type { Contracts } from '@agent-platform/core';
+
+/**
+ * Optional per-request trace plumbing. When supplied, the adapter emits
+ * `M1.stream_started` / `M1.first_token` / `M1.stream_done` (or
+ * `M1.stream_error`) events bracketing the SDK call so token / latency /
+ * cost / JSON-mode telemetry surfaces in `agent trace show` instead of
+ * being lumped into W1's `stream_done`. Stateless: the adapter never
+ * stores it across calls.
+ */
+export interface ModelTraceContext {
+  traceLogger: Contracts.TraceLogger;
+  traceId: string;
+  sessionId?: string;
+  agentId?: string;
+  /**
+   * Optional caller-supplied label (e.g. 'planner', 'react', 'synthesis')
+   * forwarded into the M1 payload so consumers can distinguish the same
+   * adapter being called for different reasoning roles within one turn.
+   */
+  role?: string;
+}
+
 export interface CompletionRequest {
   systemPrompt: string;
   messages: CompletionMessage[];
@@ -20,6 +43,11 @@ export interface CompletionRequest {
    * Schema validity is still the caller's job (see `parsePlan`).
    */
   responseFormat?: { type: 'json_object' | 'text' };
+  /**
+   * Optional trace context. When omitted the adapter is silent (preserves
+   * the pre-M1 contract for callers that haven't been wired up).
+   */
+  traceContext?: ModelTraceContext;
 }
 
 export interface CompletionMessage {

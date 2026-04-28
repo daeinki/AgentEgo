@@ -93,6 +93,10 @@ export class HybridReasoner implements Contracts.Reasoner {
       block: 'R1',
       event: 'mode_selected',
       timestamp: Date.now(),
+      summary:
+        mode !== effectiveMode
+          ? `router → ${mode} but plan-execute unavailable; falling back to ${effectiveMode}`
+          : `router → ${effectiveMode}`,
       payload: {
         mode: effectiveMode,
         routerSuggested: mode,

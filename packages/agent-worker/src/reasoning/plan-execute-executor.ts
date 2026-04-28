@@ -1,6 +1,6 @@
 import type { Contracts, GoalUpdate, Plan, PlanStep, ReasoningMode, ReasoningState, ReasoningStep, SessionPolicy, StandardMessage } from '@agent-platform/core';
 import { DEFAULT_REASONING_BUDGET, generateId, nowMs } from '@agent-platform/core';
-import type { CompletionMessage, ModelAdapter } from '../model/types.js';
+import type { CompletionMessage, ModelAdapter, ModelTraceContext } from '../model/types.js';
 import type { StepMatcher } from './step-matcher.js';
 
 /**
@@ -120,6 +120,10 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
       block: 'R3',
       event: 'plan_generated',
       timestamp: Date.now(),
+      summary: `plan generated: ${plan.steps.length} step(s) — ${plan.steps
+        .slice(0, 3)
+        .map((s) => s.tool ?? '(no-tool)')
+        .join(' → ')}${plan.steps.length > 3 ? ' → …' : ''}`,
       payload: { stepCount: plan.steps.length },
     });
 
@@ -168,6 +172,7 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
           block: 'R3',
           event: 'downgraded_to_react',
           timestamp: Date.now(),
+          summary: `replan limit (${replanCount}) exhausted → downgrading to ReAct`,
           payload: { replanCount, reason: 'replan_limit_exhausted' },
         });
         yield* this.downgradeToReact(ctx, plan, outcome.failure, replanCount, state);
@@ -182,6 +187,7 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
         block: 'R3',
         event: 'replan',
         timestamp: Date.now(),
+        summary: `replan round ${replanCount}: step '${outcome.failure.failedStep.id}' exhausted retries`,
         payload: {
           round: replanCount,
           failedStepId: outcome.failure.failedStep.id,
@@ -201,6 +207,7 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
           block: 'R3',
           event: 'downgraded_to_react',
           timestamp: Date.now(),
+          summary: `replan output failed JSON validation → downgrading to ReAct`,
           payload: { replanCount, reason: 'plan_validation_error' },
         });
         yield* this.downgradeToReact(ctx, plan, outcome.failure, replanCount, state, 'plan_validation_error');
@@ -386,13 +393,21 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
       return false;
     }
 
-    const sandbox = await toolSandbox.acquire(sessionPolicy);
+    const sandboxTrace: Contracts.TraceCallContext | undefined = ctx.traceLogger
+      ? {
+          traceLogger: ctx.traceLogger,
+          traceId: ctx.userMessage.traceId,
+          ...(ctx.sessionId !== undefined ? { sessionId: ctx.sessionId } : {}),
+          ...(ctx.agentId !== undefined ? { agentId: ctx.agentId } : {}),
+        }
+      : undefined;
+    const sandbox = await toolSandbox.acquire(sessionPolicy, sandboxTrace);
     try {
-      const result = await toolSandbox.execute(sandbox, step.tool, args, 30_000);
+      const result = await toolSandbox.execute(sandbox, step.tool, args, 30_000, sandboxTrace);
       step.observation = result;
       return result.success;
     } finally {
-      await toolSandbox.release(sandbox);
+      await toolSandbox.release(sandbox, sandboxTrace);
     }
   }
 
@@ -413,6 +428,7 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
     state: ReasoningState,
   ): AsyncGenerator<Contracts.ReasoningEvent, Plan | undefined> {
     const goalUpdates = ctx.goalUpdates ?? [];
+    const rel = ctx.egoCognition?.egoRelevance;
     ctx.traceLogger?.event({
       traceId: ctx.userMessage.traceId,
       sessionId: ctx.sessionId,
@@ -420,6 +436,7 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
       block: 'R3',
       event: 'replan',
       timestamp: Date.now(),
+      summary: `trigger #3: goalUpdates=${goalUpdates.length}${typeof rel === 'number' ? `, egoRelevance=${rel.toFixed(2)}` : ''} → re-planning once`,
       payload: {
         round: 1,
         reason: 'goal_updates_high_relevance',
@@ -437,6 +454,9 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
       temperature: this.config.plannerTemperature ?? 0.2,
       maxTokens: this.config.plannerMaxTokens ?? 1024,
       responseFormat: { type: 'json_object' },
+      ...(buildTraceContext(ctx, 'planner-goal-update')
+        ? { traceContext: buildTraceContext(ctx, 'planner-goal-update')! }
+        : {}),
     })) {
       if (chunk.type === 'text_delta') planText += chunk.text;
       else if (chunk.type === 'usage') {
@@ -494,12 +514,15 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
       : buildPlannerPrompt(ctx);
 
     let planText = '';
+    const role = replan ? 'planner-replan' : 'planner-initial';
+    const tc = buildTraceContext(ctx, role);
     for await (const chunk of planner.stream({
       systemPrompt: prompt.systemPrompt,
       messages: prompt.messages,
       temperature: this.config.plannerTemperature ?? 0.2,
       maxTokens: this.config.plannerMaxTokens ?? 1024,
       responseFormat: { type: 'json_object' },
+      ...(tc ? { traceContext: tc } : {}),
     })) {
       if (chunk.type === 'text_delta') planText += chunk.text;
       else if (chunk.type === 'usage') {
@@ -588,7 +611,12 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
       { role: 'user', content: extractText(ctx.userMessage) },
     ];
     let text = '';
-    for await (const chunk of this.actorModel.stream({ systemPrompt: prompt, messages })) {
+    const tc = buildTraceContext(ctx, 'synthesis');
+    for await (const chunk of this.actorModel.stream({
+      systemPrompt: prompt,
+      messages,
+      ...(tc ? { traceContext: tc } : {}),
+    })) {
       if (chunk.type === 'text_delta') text += chunk.text;
       else if (chunk.type === 'usage') {
         const ev: Contracts.ReasoningEvent = {
@@ -856,6 +884,26 @@ export async function preservePriorSuccesses(
   }
 
   return preserved;
+}
+
+/**
+ * Construct an `M1` trace context from the reasoning context, tagged with the
+ * caller's role (planner-initial / planner-replan / planner-goal-update /
+ * synthesis). Returns undefined when the reasoner has no traceLogger wired —
+ * the adapter then skips emitting M1 events, preserving the silent fast path.
+ */
+function buildTraceContext(
+  ctx: Contracts.ReasoningContext,
+  role: string,
+): ModelTraceContext | undefined {
+  if (!ctx.traceLogger) return undefined;
+  return {
+    traceLogger: ctx.traceLogger,
+    traceId: ctx.userMessage.traceId,
+    ...(ctx.sessionId !== undefined ? { sessionId: ctx.sessionId } : {}),
+    ...(ctx.agentId !== undefined ? { agentId: ctx.agentId } : {}),
+    role,
+  };
 }
 
 function cloneBudget(source?: Contracts.ReasoningContext['budget']) {

@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS trace_events (
   event        TEXT NOT NULL,
   timestamp    INTEGER NOT NULL,
   duration_ms  INTEGER,
+  summary      TEXT,
   payload      TEXT,
   error        TEXT
 );
@@ -27,6 +28,23 @@ CREATE INDEX IF NOT EXISTS idx_trace_events_trace ON trace_events(trace_id, time
 CREATE INDEX IF NOT EXISTS idx_trace_events_session ON trace_events(session_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_trace_events_block ON trace_events(block, timestamp);
 `;
+
+/**
+ * Idempotent migration: pre-`summary` databases were created before the
+ * column existed. SQLite's `ALTER TABLE ADD COLUMN` is idempotent in spirit
+ * but throws if the column already exists, so we probe with PRAGMA first.
+ */
+function ensureSummaryColumn(db: DatabaseSync): void {
+  const cols = db
+    .prepare('PRAGMA table_info(trace_events)')
+    .all() as Array<{ name: string }>;
+  if (cols.some((c) => c.name === 'summary')) return;
+  try {
+    db.exec('ALTER TABLE trace_events ADD COLUMN summary TEXT;');
+  } catch {
+    // Race or pre-existing — best-effort, never fatal.
+  }
+}
 
 function expandHome(p: string): string {
   if (p.startsWith('~/')) return resolve(homedir(), p.slice(2));
@@ -54,6 +72,7 @@ export class SqliteTraceLog implements TraceLogger {
     this.db = new DatabaseSync(path);
     this.db.exec('PRAGMA journal_mode = WAL;');
     this.db.exec(SCHEMA_SQL);
+    ensureSummaryColumn(this.db);
 
     if (options.retentionDays && options.retentionDays > 0) {
       this.pruneOlderThan(options.retentionDays);
@@ -65,8 +84,8 @@ export class SqliteTraceLog implements TraceLogger {
       const stmt = this.db.prepare(`
         INSERT INTO trace_events (
           trace_id, session_id, agent_id, block, event,
-          timestamp, duration_ms, payload, error
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          timestamp, duration_ms, summary, payload, error
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       stmt.run(
         entry.traceId,
@@ -76,6 +95,7 @@ export class SqliteTraceLog implements TraceLogger {
         entry.event,
         entry.timestamp,
         entry.durationMs ?? null,
+        entry.summary ?? null,
         entry.payload ? JSON.stringify(entry.payload) : null,
         entry.error ?? null,
       );
@@ -93,6 +113,7 @@ export class SqliteTraceLog implements TraceLogger {
       block: opts.block,
       event: opts.event ?? 'enter',
       timestamp: start,
+      ...(opts.summary !== undefined ? { summary: opts.summary } : {}),
       ...(opts.payload ? { payload: opts.payload } : {}),
     });
     try {
@@ -105,6 +126,7 @@ export class SqliteTraceLog implements TraceLogger {
         event: opts.event ? `${opts.event}:exit` : 'exit',
         timestamp: Date.now(),
         durationMs: Date.now() - start,
+        ...(opts.summary !== undefined ? { summary: opts.summary } : {}),
       });
       return result;
     } catch (err) {

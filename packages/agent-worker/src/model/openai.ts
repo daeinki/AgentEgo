@@ -50,68 +50,174 @@ export class OpenAIAdapter implements ModelAdapter {
     const supportsTemperature = !isReasoningModel(this.model);
 
     const wantsJson = request.responseFormat?.type === 'json_object';
-    const stream = await this.client.chat.completions.create({
-      model: this.model,
-      ...(usesCompletionTokens
-        ? { max_completion_tokens: maxTok }
-        : { max_tokens: maxTok }),
-      ...(supportsTemperature ? { temperature: request.temperature ?? 0.7 } : {}),
-      messages,
-      ...(tools && tools.length > 0 ? { tools } : {}),
-      ...(wantsJson ? { response_format: { type: 'json_object' as const } } : {}),
-      stream: true,
-      stream_options: { include_usage: true },
-    });
+    const trace = request.traceContext;
+    const startedAt = Date.now();
+    const role = trace?.role ?? 'actor';
+    if (trace) {
+      trace.traceLogger.event({
+        traceId: trace.traceId,
+        ...(trace.sessionId !== undefined ? { sessionId: trace.sessionId } : {}),
+        ...(trace.agentId !== undefined ? { agentId: trace.agentId } : {}),
+        block: 'M1',
+        event: 'stream_started',
+        timestamp: startedAt,
+        summary: `openai ${this.model}: ${role} stream started (msgs=${messages.length}${tools ? `, tools=${tools.length}` : ''}${wantsJson ? ', json_object native' : ''})`,
+        payload: {
+          provider: 'openai',
+          model: this.model,
+          role,
+          messageCount: messages.length,
+          toolCount: tools?.length ?? 0,
+          jsonMode: wantsJson,
+        },
+      });
+    }
+
+    let stream;
+    try {
+      stream = await this.client.chat.completions.create({
+        model: this.model,
+        ...(usesCompletionTokens
+          ? { max_completion_tokens: maxTok }
+          : { max_tokens: maxTok }),
+        ...(supportsTemperature ? { temperature: request.temperature ?? 0.7 } : {}),
+        messages,
+        ...(tools && tools.length > 0 ? { tools } : {}),
+        ...(wantsJson ? { response_format: { type: 'json_object' as const } } : {}),
+        stream: true,
+        stream_options: { include_usage: true },
+      });
+    } catch (err) {
+      if (trace) {
+        trace.traceLogger.event({
+          traceId: trace.traceId,
+          ...(trace.sessionId !== undefined ? { sessionId: trace.sessionId } : {}),
+          ...(trace.agentId !== undefined ? { agentId: trace.agentId } : {}),
+          block: 'M1',
+          event: 'stream_error',
+          timestamp: Date.now(),
+          durationMs: Date.now() - startedAt,
+          summary: `openai ${this.model}: stream rejected pre-flight — ${(err as Error).message.slice(0, 60)}`,
+          error: (err as Error).message,
+        });
+      }
+      throw err;
+    }
 
     const toolCallIndexToId = new Map<number, string>();
     let inputTokens = 0;
     let outputTokens = 0;
     let stopReason = 'end_turn';
+    let firstTokenAt: number | undefined;
+    const emitFirstTokenIfNeeded = () => {
+      if (firstTokenAt !== undefined || !trace) return;
+      firstTokenAt = Date.now();
+      trace.traceLogger.event({
+        traceId: trace.traceId,
+        ...(trace.sessionId !== undefined ? { sessionId: trace.sessionId } : {}),
+        ...(trace.agentId !== undefined ? { agentId: trace.agentId } : {}),
+        block: 'M1',
+        event: 'first_token',
+        timestamp: firstTokenAt,
+        durationMs: firstTokenAt - startedAt,
+        summary: `openai ${this.model}: first token after ${firstTokenAt - startedAt}ms (ttft)`,
+        payload: { provider: 'openai', model: this.model, role, ttftMs: firstTokenAt - startedAt },
+      });
+    };
 
-    for await (const chunk of stream) {
-      const choice = chunk.choices[0];
-      if (choice?.delta) {
-        const delta = choice.delta;
-        if (typeof delta.content === 'string' && delta.content.length > 0) {
-          yield { type: 'text_delta', text: delta.content };
-        }
-        if (delta.tool_calls) {
-          for (const tc of delta.tool_calls) {
-            const idx = tc.index;
-            if (tc.id && !toolCallIndexToId.has(idx)) {
-              toolCallIndexToId.set(idx, tc.id);
-              const wireName = tc.function?.name ?? '';
-              const canonicalName =
-                nameMap?.wireToCanonical.get(wireName) ?? wireName;
-              yield {
-                type: 'tool_call_start',
-                id: tc.id,
-                name: canonicalName,
-              };
-            }
-            if (tc.function?.arguments) {
-              yield {
-                type: 'tool_call_delta',
-                id: toolCallIndexToId.get(idx) ?? '',
-                args: tc.function.arguments,
-              };
+    try {
+      for await (const chunk of stream) {
+        const choice = chunk.choices[0];
+        if (choice?.delta) {
+          const delta = choice.delta;
+          if (typeof delta.content === 'string' && delta.content.length > 0) {
+            emitFirstTokenIfNeeded();
+            yield { type: 'text_delta', text: delta.content };
+          }
+          if (delta.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index;
+              if (tc.id && !toolCallIndexToId.has(idx)) {
+                emitFirstTokenIfNeeded();
+                toolCallIndexToId.set(idx, tc.id);
+                const wireName = tc.function?.name ?? '';
+                const canonicalName =
+                  nameMap?.wireToCanonical.get(wireName) ?? wireName;
+                yield {
+                  type: 'tool_call_start',
+                  id: tc.id,
+                  name: canonicalName,
+                };
+              }
+              if (tc.function?.arguments) {
+                yield {
+                  type: 'tool_call_delta',
+                  id: toolCallIndexToId.get(idx) ?? '',
+                  args: tc.function.arguments,
+                };
+              }
             }
           }
         }
+        if (choice?.finish_reason) {
+          stopReason = mapFinishReason(choice.finish_reason);
+        }
+        if (chunk.usage) {
+          inputTokens = chunk.usage.prompt_tokens;
+          outputTokens = chunk.usage.completion_tokens;
+        }
       }
-      if (choice?.finish_reason) {
-        stopReason = mapFinishReason(choice.finish_reason);
+    } catch (err) {
+      if (trace) {
+        trace.traceLogger.event({
+          traceId: trace.traceId,
+          ...(trace.sessionId !== undefined ? { sessionId: trace.sessionId } : {}),
+          ...(trace.agentId !== undefined ? { agentId: trace.agentId } : {}),
+          block: 'M1',
+          event: 'stream_error',
+          timestamp: Date.now(),
+          durationMs: Date.now() - startedAt,
+          summary: `openai ${this.model}: stream errored after ${Date.now() - startedAt}ms — ${(err as Error).message.slice(0, 60)}`,
+          error: (err as Error).message,
+        });
       }
-      if (chunk.usage) {
-        inputTokens = chunk.usage.prompt_tokens;
-        outputTokens = chunk.usage.completion_tokens;
-      }
+      throw err;
     }
 
     const pricing = PRICING[this.model];
     const cost = pricing
       ? (inputTokens * pricing.input + outputTokens * pricing.output) / 1_000_000
       : undefined;
+
+    if (trace) {
+      const totalMs = Date.now() - startedAt;
+      const ttft = firstTokenAt !== undefined ? firstTokenAt - startedAt : null;
+      trace.traceLogger.event({
+        traceId: trace.traceId,
+        ...(trace.sessionId !== undefined ? { sessionId: trace.sessionId } : {}),
+        ...(trace.agentId !== undefined ? { agentId: trace.agentId } : {}),
+        block: 'M1',
+        event: 'stream_done',
+        timestamp: Date.now(),
+        durationMs: totalMs,
+        summary:
+          `openai ${this.model}: ${outputTokens} out / ${inputTokens} in tokens` +
+          (cost !== undefined ? `, $${cost.toFixed(4)}` : '') +
+          ` in ${totalMs}ms` +
+          (ttft !== null ? ` (ttft=${ttft}ms)` : '') +
+          ` — stop=${stopReason}`,
+        payload: {
+          provider: 'openai',
+          model: this.model,
+          role,
+          inputTokens,
+          outputTokens,
+          ...(cost !== undefined ? { costUsd: cost } : {}),
+          ttftMs: ttft,
+          stopReason,
+        },
+      });
+    }
 
     yield { type: 'usage', inputTokens, outputTokens, cost };
     yield { type: 'done', stopReason };

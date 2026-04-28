@@ -9,6 +9,7 @@ import type {
 import type {
   CompletionMessage,
   ModelAdapter,
+  ModelTraceContext,
   StreamChunk,
   ToolDefinition,
 } from '../model/types.js';
@@ -88,7 +89,18 @@ export class ReactExecutor implements Contracts.Reasoner {
       let stepText = '';
       let stopReason = '';
 
-      for await (const chunk of this.modelAdapter.stream(buildRequest(ctx.systemPrompt, messages, toolDefs))) {
+      const traceContext = this.deps.traceLogger
+        ? ({
+            traceLogger: this.deps.traceLogger,
+            traceId: ctx.userMessage.traceId,
+            ...(ctx.sessionId !== undefined ? { sessionId: ctx.sessionId } : {}),
+            ...(ctx.agentId !== undefined ? { agentId: ctx.agentId } : {}),
+            role: 'react',
+          } satisfies ModelTraceContext)
+        : undefined;
+      for await (const chunk of this.modelAdapter.stream(
+        buildRequest(ctx.systemPrompt, messages, toolDefs, traceContext),
+      )) {
         if (ctx.abortSignal?.aborted) {
           state.terminationReason = 'user_abort';
           break;
@@ -141,6 +153,11 @@ export class ReactExecutor implements Contracts.Reasoner {
 
         const toolStart = Date.now();
         const observation = await this.executeTool(ctx, call, priorRetries, retryLimit);
+        const toolStatus: 'ok' | 'denied' | 'error' = observation.success
+          ? 'ok'
+          : observation.reason === 'permission_denied'
+            ? 'denied'
+            : 'error';
         ctx.traceLogger?.event({
           traceId: ctx.userMessage.traceId,
           sessionId: ctx.sessionId,
@@ -149,13 +166,12 @@ export class ReactExecutor implements Contracts.Reasoner {
           event: 'tool_call',
           timestamp: Date.now(),
           durationMs: Date.now() - toolStart,
+          summary:
+            `${call.name} → ${toolStatus} in ${Date.now() - toolStart}ms` +
+            (priorRetries > 0 ? ` (retry ${priorRetries})` : ''),
           payload: {
             toolName: call.name,
-            toolStatus: observation.success
-              ? 'ok'
-              : observation.reason === 'permission_denied'
-                ? 'denied'
-                : 'error',
+            toolStatus,
             retry: priorRetries,
           },
         });
@@ -245,9 +261,17 @@ export class ReactExecutor implements Contracts.Reasoner {
       };
     }
     const policy = sessionPolicy;
-    const sandbox = await toolSandbox.acquire(policy);
+    const sandboxTrace: Contracts.TraceCallContext | undefined = this.deps.traceLogger
+      ? {
+          traceLogger: this.deps.traceLogger,
+          traceId: ctx.userMessage.traceId,
+          ...(ctx.sessionId !== undefined ? { sessionId: ctx.sessionId } : {}),
+          ...(ctx.agentId !== undefined ? { agentId: ctx.agentId } : {}),
+        }
+      : undefined;
+    const sandbox = await toolSandbox.acquire(policy, sandboxTrace);
     try {
-      const result = await toolSandbox.execute(sandbox, call.name, args, 30_000);
+      const result = await toolSandbox.execute(sandbox, call.name, args, 30_000, sandboxTrace);
       if (result.success) {
         return { success: true, text: result.output ?? '' };
       }
@@ -266,7 +290,7 @@ export class ReactExecutor implements Contracts.Reasoner {
         reason: 'exhausted',
       };
     } finally {
-      await toolSandbox.release(sandbox);
+      await toolSandbox.release(sandbox, sandboxTrace);
     }
   }
 }
@@ -284,13 +308,16 @@ function buildRequest(
   systemPrompt: string,
   messages: CompletionMessage[],
   tools: ToolDefinition[] | undefined,
+  traceContext: ModelTraceContext | undefined,
 ) {
   const req: {
     systemPrompt: string;
     messages: CompletionMessage[];
     tools?: ToolDefinition[];
+    traceContext?: ModelTraceContext;
   } = { systemPrompt, messages: [...messages] };
   if (tools && tools.length > 0) req.tools = tools;
+  if (traceContext) req.traceContext = traceContext;
   return req;
 }
 

@@ -102,6 +102,35 @@ describe('AnthropicAdapter — responseFormat=json_object prefill', () => {
     expect(sentMessages.at(-1)?.role).toBe('user');
   });
 
+  it('emits M1.stream_started + first_token + stream_done with traceContext', async () => {
+    const adapter = new AnthropicAdapter({ apiKey: 'sk-test' });
+    const { client } = makeFakeAnthropicClient('hello');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (adapter as any).client = client;
+
+    const events: Array<{ block: string; event: string; summary?: string }> = [];
+    const traceLogger = {
+      event(e: { block: string; event: string; summary?: string }) {
+        events.push({ block: e.block, event: e.event, summary: e.summary });
+      },
+      async span<T>(_o: unknown, fn: () => Promise<T>) { return fn(); },
+      async close() {},
+    };
+
+    await collectText(
+      adapter.stream({
+        systemPrompt: 'sys',
+        messages: [{ role: 'user', content: 'hi' }],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        traceContext: { traceLogger: traceLogger as any, traceId: 't-1', role: 'planner-initial' },
+      }),
+    );
+
+    const m1 = events.filter((e) => e.block === 'M1');
+    expect(m1.map((e) => e.event)).toEqual(['stream_started', 'first_token', 'stream_done']);
+    expect(m1[0]?.summary).toMatch(/anthropic .*: planner-initial stream started/);
+  });
+
   it('only prepends "{" once even if multiple text_delta chunks arrive', async () => {
     const adapter = new AnthropicAdapter({ apiKey: 'sk-test' });
     // Custom client that emits two consecutive text_deltas.

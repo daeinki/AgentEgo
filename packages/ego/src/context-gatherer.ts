@@ -12,6 +12,7 @@ import type { NormalizedSignal } from './normalize.js';
 type MemorySystem = Contracts.MemorySystem;
 type GoalStore = Contracts.GoalStore;
 type AuditLog = Contracts.AuditLog;
+type TraceLogger = Contracts.TraceLogger;
 
 export interface EgoGatheredContext {
   memories: MemorySearchResult[];
@@ -31,6 +32,12 @@ export interface GatherParams {
   memoryCache?: Map<string, MemorySearchResult[]>;
   audit?: AuditLog;
   traceId: string;
+  /**
+   * Optional trace logger. When wired, the EGO memory search emits an `X1`
+   * `memory_searched` event so the search internals are visible in
+   * `agent trace show` (otherwise the EGO context lookup is invisible).
+   */
+  traceLogger?: TraceLogger;
 }
 
 /**
@@ -58,8 +65,11 @@ export async function gatherContext(params: GatherParams): Promise<EgoGatheredCo
     };
     const query = signal.rawText;
     try {
+      const traceCtx = params.traceLogger
+        ? { traceLogger: params.traceLogger, traceId, sessionId, agentId }
+        : undefined;
       const results = await withTimeout(
-        memory.search(query, ctx),
+        memory.search(query, ctx, traceCtx),
         config.memory.searchTimeoutMs,
         'memory.search',
       );

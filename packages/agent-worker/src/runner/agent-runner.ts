@@ -103,6 +103,9 @@ export class AgentRunner {
       block: 'W1',
       event: 'session_resolved',
       timestamp: Date.now(),
+      summary: existingSession
+        ? `session '${sessionId}' resolved (existing, status=${existingSession.status})`
+        : `session '${sessionId}' resolved (new)`,
       payload: {
         isNew: existingSession === null,
         ...(existingSession ? { status: existingSession.status } : {}),
@@ -118,6 +121,7 @@ export class AgentRunner {
       block: 'W1',
       event: 'history_loaded',
       timestamp: Date.now(),
+      summary: `loaded ${events.length} prior session events from sessions.db`,
       payload: { eventCount: events.length },
     });
 
@@ -139,6 +143,7 @@ export class AgentRunner {
       block: 'W1',
       event: 'prompt_built',
       timestamp: Date.now(),
+      summary: `built prompt with ${priorMessages.length} prior messages${enrichment ? ', EGO enrichment included' : ''}`,
       payload: {
         priorMessageCount: priorMessages.length,
         hasEnrichment: enrichment !== undefined,
@@ -186,6 +191,7 @@ export class AgentRunner {
       ...(trace ? { traceLogger: trace } : {}),
     };
 
+    const toolNames = ctx.availableTools.map((t) => t.name);
     trace?.event({
       traceId: msg.traceId,
       sessionId,
@@ -193,9 +199,8 @@ export class AgentRunner {
       block: 'W1',
       event: 'reasoner_invoked',
       timestamp: Date.now(),
-      payload: {
-        availableTools: ctx.availableTools.map((t) => t.name),
-      },
+      summary: `invoking ${reasoner.mode} reasoner with ${toolNames.length} tools available`,
+      payload: { availableTools: toolNames },
     });
 
     // ADR-010: emit `reasoning_route` phase before the reasoner takes over.
@@ -264,6 +269,9 @@ export class AgentRunner {
       event: 'stream_done',
       timestamp: Date.now(),
       durationMs: Math.round(latencyMs),
+      summary:
+        `reasoner returned ${responseText.length} chars in ${Math.round(latencyMs)}ms ` +
+        `(${inputTokens} in / ${outputTokens} out${costUsd !== undefined ? `, $${costUsd.toFixed(4)}` : ''})`,
       payload: {
         responseLen: responseText.length,
         inputTokens,
@@ -305,6 +313,7 @@ export class AgentRunner {
         block: 'W1',
         event: 'session_append_failed',
         timestamp: Date.now(),
+        summary: `failed to persist ${appendedCount} session events: ${(error instanceof Error ? error.message : String(error)).slice(0, 60)}`,
         payload: {
           appendedCount,
           error: error instanceof Error ? error.message : String(error),
@@ -320,6 +329,7 @@ export class AgentRunner {
       block: 'W1',
       event: 'session_events_appended',
       timestamp: Date.now(),
+      summary: `persisted ${appendedCount} session events (user_message + agent_response)`,
       payload: { appendedCount },
     });
 
@@ -328,12 +338,22 @@ export class AgentRunner {
     let ingested = false;
     if (this.deps.memory && responseText.length > 0) {
       try {
-        await this.deps.memory.ingest({
-          sessionId,
-          userMessage: userText,
-          agentResponse: responseText,
-          timestamp,
-        });
+        await this.deps.memory.ingest(
+          {
+            sessionId,
+            userMessage: userText,
+            agentResponse: responseText,
+            timestamp,
+          },
+          trace
+            ? {
+                traceLogger: trace,
+                traceId: msg.traceId,
+                sessionId,
+                agentId: this.config.agentId,
+              }
+            : undefined,
+        );
         ingested = true;
       } catch {
         // swallow — memory ingest is best-effort
@@ -345,6 +365,9 @@ export class AgentRunner {
         block: 'W1',
         event: 'memory_ingested',
         timestamp: Date.now(),
+        summary: ingested
+          ? `memory ingested user+agent turn into PalaceMemorySystem`
+          : `memory ingest skipped (best-effort failure swallowed)`,
         payload: { ingested },
       });
     }

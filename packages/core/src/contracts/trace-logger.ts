@@ -10,7 +10,9 @@
  *   R1 — HybridReasoner mode selection
  *   R2 — ReactExecutor
  *   R3 — PlanExecuteExecutor
- *   M1 — ModelAdapter (reserved; Phase B)
+ *   M1 — ModelAdapter (LLM stream lifecycle + token/cost telemetry)
+ *   X1 — Memory (PalaceMemorySystem search/ingest)
+ *   S1 — Sandbox (acquire/release/execute)
  */
 export type TraceBlock =
   | 'G3'
@@ -21,7 +23,9 @@ export type TraceBlock =
   | 'R1'
   | 'R2'
   | 'R3'
-  | 'M1';
+  | 'M1'
+  | 'X1'
+  | 'S1';
 
 /** A single recorded event inside a traced turn. */
 export interface TraceEvent {
@@ -30,16 +34,27 @@ export interface TraceEvent {
   agentId?: string;
   block: TraceBlock;
   /**
-   * Event name — free-form within a block. Common verbs:
+   * Event name. Prefer one of the canonical names in {@link TraceEventNames}
+   * — the type widening (`TraceEventName | (string & {})`) accepts arbitrary
+   * strings for forward-compat while giving IDE autocomplete + grep'ability
+   * for the standard set. Common verbs:
    *   `enter` / `exit` — span boundaries (exit sets durationMs).
    *   `decision` — block made a judgment (EGO action, router agent, …).
    *   `tool_call`, `step_start`, `step_end`, `mode_selected`,
    *   `plan_generated`, `replan`, `downgraded_to_react`, `error`.
    */
-  event: string;
+  event: TraceEventName | (string & {});
   timestamp: number;
   /** Set on `exit` events or span completions. */
   durationMs?: number;
+  /**
+   * Optional one-line natural-language description of what just happened.
+   * Recommended for every emitter — it's what `agent trace show` renders
+   * as the human-readable column ("EGO judged 'enrich' (confidence=0.82)",
+   * "claude-opus-4-7: 1240 out tokens, $0.031, ttft=420ms"). Keep under
+   * ~120 chars; longer details belong in `payload`.
+   */
+  summary?: string;
   /** JSON-serializable block-specific metadata. */
   payload?: Record<string, unknown>;
   /** Error message when the block failed. */
@@ -53,6 +68,8 @@ export interface TraceSpanOptions {
   block: TraceBlock;
   /** Defaults to `'enter'`/`'exit'` when omitted; used to specialize. */
   event?: string;
+  /** Optional human-readable description; mirrored onto enter+exit events. */
+  summary?: string;
   payload?: Record<string, unknown>;
 }
 
@@ -62,18 +79,46 @@ export interface TraceSpanOptions {
  * 키 역할을 한다. 구현체는 이 이름들로 `event` 필드를 채워야 한다.
  */
 export const TraceEventNames = {
+  // Generic span boundaries / errors
+  ENTER: 'enter',
+  EXIT: 'exit',
+  ERROR: 'error',
+  // Decision-making blocks (G3 / C1 / E1)
+  DECISION: 'decision',
+  FAST_EXIT: 'fast_exit',
+  DEEP_PATH_START: 'deep_path_start',
+  // W1 (AgentRunner) turn lifecycle
   SESSION_RESOLVED: 'session_resolved',
   HISTORY_LOADED: 'history_loaded',
-  MEMORY_SEARCHED: 'memory_searched',
   PROMPT_BUILT: 'prompt_built',
   REASONER_INVOKED: 'reasoner_invoked',
-  REASONING_STEP: 'reasoning.step',
-  REASONING_PLAN: 'reasoning.plan',
-  REASONING_REPLAN: 'reasoning.replan',
   STREAM_DONE: 'stream_done',
   SESSION_EVENTS_APPENDED: 'session_events_appended',
   SESSION_APPEND_FAILED: 'session_append_failed',
+  // R1 / R2 / R3 reasoning
+  MODE_SELECTED: 'mode_selected',
+  REASONING_STEP: 'reasoning.step',
+  REASONING_PLAN: 'reasoning.plan',
+  REASONING_REPLAN: 'reasoning.replan',
+  TOOL_CALL: 'tool_call',
+  PLAN_GENERATED: 'plan_generated',
+  REPLAN: 'replan',
+  DOWNGRADED_TO_REACT: 'downgraded_to_react',
+  // M1 ModelAdapter
+  STREAM_STARTED: 'stream_started',
+  FIRST_TOKEN: 'first_token',
+  STREAM_ERROR: 'stream_error',
+  // X1 Memory
+  MEMORY_SEARCHED: 'memory_searched',
   MEMORY_INGESTED: 'memory_ingested',
+  // S1 Sandbox
+  SANDBOX_ACQUIRED: 'sandbox_acquired',
+  SANDBOX_RELEASED: 'sandbox_released',
+  SANDBOX_EXECUTED: 'sandbox_executed',
+  // P1 platform supplementary
+  SKILL_SEED: 'skill_seed',
+  SKILL_SEED_SUMMARY: 'skill_seed_summary',
+  SKILL_MOUNT_ERROR: 'skill_mount_error',
 } as const;
 export type TraceEventName = (typeof TraceEventNames)[keyof typeof TraceEventNames];
 
@@ -90,6 +135,23 @@ export interface TraceLogger {
   event(entry: TraceEvent): void;
   span<T>(opts: TraceSpanOptions, fn: () => Promise<T>): Promise<T>;
   close?(): Promise<void>;
+}
+
+/**
+ * Per-call trace context handed to subsystems (memory, sandbox, model
+ * adapter, …) that don't naturally hold a `TraceLogger` reference but want
+ * to surface their internals in `agent trace show`. Always optional —
+ * subsystems must work silently when omitted.
+ *
+ * Subtypes (e.g. `ModelTraceContext` in agent-worker) extend this with a
+ * `role` field; here we keep the shape minimal so it's safe to import from
+ * any package without circular deps.
+ */
+export interface TraceCallContext {
+  traceLogger: TraceLogger;
+  traceId: string;
+  sessionId?: string;
+  agentId?: string;
 }
 
 /**
