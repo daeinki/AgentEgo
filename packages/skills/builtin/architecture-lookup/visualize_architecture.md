@@ -1,10 +1,20 @@
 # visualize_architecture.md — TUI/Webapp 메시지 흐름 블록 다이어그램
 
-> **문서 버전**: v0.7.0
-> **작성일**: 2026-04-25
-> **상위 문서**: harness-engineering.md v0.7.0 / ego-design.md v0.3.0 / agent-orchestration.md v0.1.0
+> **문서 버전**: v0.8.0
+> **작성일**: 2026-04-29
+> **상위 문서**: harness-engineering.md v0.8.0 / ego-design.md v0.3.0 / agent-orchestration.md v0.1.0
 > **목적**: `agent-tui` 및 브라우저 **webapp 대시보드** 에 입력된 사용자 발화가 최종 응답으로 돌아오기까지 거치는 모든 블록을 한눈에 보이게 한다. 각 블록의 (입력 → 처리 → 출력 → 다음 블록) 을 규약과 함께 기록해, 코드가 바뀌어도 본 문서의 §12 "재생성 가이드" 만으로 새 다이어그램을 재현할 수 있도록 한다.
-> **스코프**: 설계 리포(`D:\ai\claude`) + 구현 리포(`D:\ai\agent-platform`) v0.7.0 기준. TUI/Webapp → Gateway RPC → Control Plane → EGO → Agent Runner → Reasoner → (도구/모델/스킬) → 스트림 복귀 경로를 다룬다. TUI 와 Webapp 은 동일 `/rpc` 계약 위에서 돌아가며 인증만 다르다 — §14 "Webapp 서피스 차이" 에서 델타만 서술한다. webchat/HTTP/채널 어댑터는 동일 `handler()` 를 공유하므로 §11 에 짧게만 언급한다. 파이프라인에 가로지르는 **TraceLogger** 관찰성 레이어는 §13 에서 별도 서술한다.
+> **스코프**: 설계 리포(`D:\ai\claude`) + 구현 리포(`D:\ai\agent-platform`) v0.8.0 기준. TUI/Webapp → Gateway RPC → Control Plane → EGO → Agent Runner → Reasoner → (도구/모델/스킬) → 스트림 복귀 경로를 다룬다. TUI 와 Webapp 은 동일 `/rpc` 계약 위에서 돌아가며 인증만 다르다 — §14 "Webapp 서피스 차이" 에서 델타만 서술한다. webchat/HTTP/채널 어댑터는 동일 `handler()` 를 공유하므로 §11 에 짧게만 언급한다. 파이프라인에 가로지르는 **TraceLogger** 관찰성 레이어는 §13 에서 별도 서술한다.
+>
+> **v0.8 변경 요약** (2026-04-29, 채널 어댑터 보강 트리오 + 트레이스 블록 확장 + 워크플로우 DSL 확장 + planner JSON 모드 + 메모리 액세스 로깅 + 시맨틱 step 보존):
+> - **§11 채널별 차이 — Discord Resume + sharding** ([packages/channels/discord/src/gateway-client.ts](D:\ai\agent-platform\packages\channels\discord\src\gateway-client.ts)): READY dispatch 의 `session_id` + `resume_gateway_url` 을 캐시 → close 코드별 RESUME(op6) vs re-IDENTIFY 분기 (4007/4009 → 세션 폐기 후 IDENTIFY, 4004/4010-4014 → fatal abort, 그 외 → resume_gateway_url 로 재접속). 지수 백오프(1→30s cap), opt-out `autoReconnect:false`. 신규 `DiscordShardManager` 가 N 개 클라이언트를 5s 간격으로 순차 IDENTIFY (Discord 의 per-bucket rate limit 대응). `onLifecycle` 콜백으로 connecting/identify/resume/ready/resumed/invalid_session/close/reconnect_scheduled/fatal 의 9 가지 라이프사이클 노출.
+> - **§11 채널별 차이 — Slack Socket Mode** ([packages/channels/slack/src/socket-mode-transport.ts](D:\ai\agent-platform\packages\channels\slack\src\socket-mode-transport.ts) 신규): `SlackConfig` 가 `transport: 'http' | 'socket'` discriminated union. Socket Mode 는 `apps.connections.open` → 단명 wss URL → events_api envelope ack(3s 이내 `{envelope_id}` 반송) + `disconnect{refresh_requested}` 시 즉시 재접속. 번역 레이어 `slack-events.ts` 추출로 두 트랜스포트가 `SlackEventsRequest` 동일 스키마 공유.
+> - **§11 채널별 차이 — WhatsApp Cloud API** ([packages/channels/whatsapp/src/cloud-api-client.ts](D:\ai\agent-platform\packages\channels\whatsapp\src\cloud-api-client.ts) 신규, `./cloud` 서브패스 export): baileys 옆에 `CloudApiWhatsAppClient` 가 두 번째 `WhatsAppClient` 구현으로 추가. 아웃바운드 = `POST graph.facebook.com/v20.0/{phone-id}/messages` Bearer. 인바운드 = 자체 webhook HTTP 서버, GET `hub.verify_token` / POST `X-Hub-Signature-256` HMAC 검증, `entry[].changes[].value.messages[]` → `WhatsAppMessage` (text/button/interactive/image/video/document caption). Cloud API 는 그룹 챗 미노출 → `isGroup: false` 고정.
+> - **§13 TraceLogger — 신규 블록 M1/X1/S1 + `summary` 필드** ([packages/core/src/contracts/trace-logger.ts](D:\ai\agent-platform\packages\core\src\contracts\trace-logger.ts)): `TraceBlock` 에 `M1`(ModelAdapter LLM 스트림 라이프사이클 + 토큰/비용 telemetry), `X1`(Memory search/ingest), `S1`(Sandbox acquire/release/execute) 추가 — Phase B 의 "예정" 자리에서 정식 스펙으로 승격. `TraceEvent`/`TraceSpanOptions` 에 옵셔널 `summary?: string` 추가 ("EGO judged 'enrich' (confidence=0.82)" 같은 1줄 자연어 설명). `agent trace show` 가 우선 `summary` 를 렌더, 없으면 payload digest 로 폴백. `TraceCallContext` 가 모듈 경계용 인터페이스로 격상 — memory/sandbox/model adapter 가 `TraceLogger` 참조 없이도 `traceLogger + traceId + sessionId? + agentId?` 만 받아 emit 가능.
+> - **§7 / §8 reasoner — Planner JSON 모드 강제** ([packages/agent-worker/src/reasoning/plan-execute-executor.ts](D:\ai\agent-platform\packages\agent-worker\src\reasoning\plan-execute-executor.ts) 3 호출지점): 3 군데 planner LLM 호출(초기 plan / 트리거 #3 replan / 트리거 #1 replan) 모두 `responseFormat: { type: 'json_object' }` 전달. `ModelAdapter` 가 OpenAI 는 native `response_format=json_object` 로, Anthropic 은 system 끝에 `{` prefill 으로 우회 — 어떤 프로바이더도 동일하게 JSON 으로 강제됨. parse 실패 시 ReAct 다운그레이드 경로는 동일.
+> - **§8 reasoner — 시맨틱 step 보존** ([packages/agent-worker/src/reasoning/step-matcher.ts](D:\ai\agent-platform\packages\agent-worker\src\reasoning\step-matcher.ts) 신규): replan 시 새 plan 의 step id 가 바뀌어도 의미가 같은 prior 성공 step 의 status/observation 을 승계. `StepMatcher` 인터페이스 + 기본 구현 `EmbedderStepMatcher` (cosine similarity ≥ 0.85 임계). 매칭 순서 = exact id → semantic match → 매칭 없으면 새로 실행. agent-worker 가 memory 패키지에 dep 갖지 않도록 `EmbedFn = (text)=>Promise<Float32Array>` 라는 좁은 시그니처만 받음 — `platform.ts` 가 palace embedder 를 그대로 바인딩.
+> - **§9 / §13 X1 — 메모리 액세스 로깅** ([packages/memory/src/palace-memory.ts](D:\ai\agent-platform\packages\memory\src\palace-memory.ts)): `PalaceMemorySystem.search()` 가 매 hit chunk 마다 `access_count++` + `memory_access_log` row 기록. 동시에 `TraceCallContext` 가 주입되면 `block: 'X1', event: 'memory_searched'` 이벤트 emit (요약 = `memory.search "<query>" → N hit(s), top score=0.812 in 14ms`). env `AGENT_MEMORY_ACCESS_LOG=0|false|off` 로 비활성화 (검색이 ranking signal 을 perturb 하지 않게 하려는 호출자용).
+> - **곁가지 [workflow] DSL 확장** ([packages/workflow/src/schema.ts](D:\ai\agent-platform\packages\workflow\src\schema.ts) `kind:` 추가): `tool_call`/`sequence`/`parallel`/`conditional`/`loop` 다섯 종에 더해 `call` (function 호출) / `return` (값 반환) / `try` (try-catch-finally, catch 가 fresh scope frame) / `scope` (lexical 변수 스코프) 4 종 추가. depth limit 으로 무한 재귀 차단. `WorkflowTaskRunner` (cron 워크플로우) 도 동일 인터프리터 사용.
 >
 > **v0.7 변경 요약** (2026-04-25, Channels/Cron 실데이터 + Reasoning trigger #3 + device CLI):
 > - **[C2'] ChannelRegistry 실구현** — `PlatformChannelRegistry` ([packages/control-plane/src/gateway/platform-channel-registry.ts](D:\ai\agent-platform\packages\control-plane\src\gateway\platform-channel-registry.ts)) 신규. `platform.ts` 가 WebChat 부팅 시 `register('webchat', 'webchat', adapter)` 호출, `onMessage` 수신마다 `recordEvent`, catch 에서 `recordError`, shutdown 에서 `deregister`. `ChannelAdapter.healthCheck()` 를 온디맨드 `refreshHealth(id)` 경로로 호출해 status 파생. `channels.list` / `channels.status` RPC 가 이제 실 데이터 반환 (이전에는 빈 배열).
@@ -683,16 +693,18 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 
 ### [R3] PlanExecuteExecutor
 - **파일**: `packages/agent-worker/src/reasoning/plan-execute-executor.ts`
-- **입력**: `ReasoningContext` (+ 생성자에 `plannerModel` 주입 가능).
+- **입력**: `ReasoningContext` (+ 생성자에 `plannerModel` 주입 가능, `stepMatcher?: StepMatcher` v0.8 신규).
 - **처리**:
-  1. `planner` 호출 (별도 system prompt 로 JSON plan 강제). 파싱 실패 → ReAct 다운그레이드.
+  1. `planner` 호출 (별도 system prompt + `responseFormat:{type:'json_object'}` v0.8 으로 JSON plan 강제 — OpenAI native, Anthropic 은 system 끝에 `{` prefill 로 우회). 파싱 실패 → ReAct 다운그레이드.
   1b. **트리거 #3 (v0.7 신규)**: `ctx.egoCognition?.egoRelevance > 0.8 && (ctx.goalUpdates?.length ?? 0) > 0` 이면 plan 형성 직후 즉시 재계획 1회. 전용 prompt 가 이전 plan + goalUpdates 리스트 + `cognition.opportunities/risks/situationSummary` 를 surface — planner 가 목표 변경을 반영해 새 plan 을 생성. `replanLimit` 과 공유되므로 트리거 #1 (retry 소진) 과 합쳐 상한 초과 없음. replan 마커 `reason: 'goal_updates_high_relevance'` + 성공 step 보존 규칙 동일.
   2. `computeLevels(plan.steps)` — 의존성 그래프로 레벨 분리.
   3. 각 레벨:
      - `parallelExecution: true` → 동일 레벨 step 을 `Promise.all`, 이벤트는 step 순서대로 버퍼링 후 일괄 yield (trace 결정성 유지).
      - 기본 false → 순차 실행.
      - 각 step: 내부적으로 `ReactExecutor` 호출 + tool 실행. 실패 시 `stepRetryLimit` 재시도.
-  4. 단계 실패 누적 → `replanLimit` 회 replan. replan 시 동일 id 성공 step 은 status/observation 자동 승계 (재실행 방지).
+  4. 단계 실패 누적 → `replanLimit` 회 replan. replan 시 step 보존 규칙 (v0.8):
+     - 1차: **exact id 매칭** — 동일 `step.id` 의 prior 성공 결과를 status/observation 그대로 승계 (재실행 방지).
+     - 2차 (v0.8 신규): id 가 바뀌어도 `stepMatcher` 가 주입되면 **시맨틱 매칭** — `EmbedderStepMatcher` 기본 구현이 cosine similarity ≥ 0.85 임계로 prior 성공 step 의 goal 과 비교 후 best match 의 결과를 승계. 임계 미만이면 새로 실행. agent-worker 가 memory 패키지에 dep 갖지 않게 `EmbedFn = (text)=>Promise<Float32Array>` 만 받도록 격리 — `platform.ts` 가 palace embedder 를 그대로 바인딩.
   5. 모든 한도 소진 → ReAct 로 augmented user message + fresh budget 다운그레이드.
   6. 완료 후 summary (최종 텍스트) `yield { kind:'final', text }` + usage.
 - **출력**: `AsyncIterable<ReasoningEvent>` (`delta`, `usage`, `final`, 내부 trace 이벤트).
@@ -908,6 +920,53 @@ ModelAdapter.stream()        [M1]   yields {type:'text_delta', text}
 
 즉 `handler` 는 모든 경로가 공유하는 **단일 pipeline entry** 이고, 델타 emit 함수의 구현만 채널마다 다르다.
 
+### 11.1 트랜스포트별 변형 (v0.8 갱신)
+
+각 채널 어댑터는 위 단일 entry 를 공유하면서도 인바운드 트랜스포트를 옵션으로 갖는다. 어댑터별 신뢰성 기능이 v0.7~v0.8 에서 보강됨:
+
+#### Discord — Gateway WS + Resume + Sharding
+
+[packages/channels/discord/src/gateway-client.ts](D:\ai\agent-platform\packages\channels\discord\src\gateway-client.ts) (`DiscordGatewayClient` + `DiscordShardManager`).
+
+- **Resume 플로우**: READY dispatch 의 `session_id` + `resume_gateway_url` 을 캐시. `lastSeq` 는 매 dispatch 의 `s` 필드로 추적. close 시 close code 분기:
+  - `4007` (invalid seq) / `4009` (session timed out): 세션 폐기 후 재-IDENTIFY.
+  - `4004` (auth failed) / `4010-4014` (invalid shard / sharding required / invalid api version / invalid intents / disallowed intents): fatal — 재접속 루프 abort, `onLifecycle({type:'fatal'})` emit.
+  - 그 외 (1006 abnormal closure 포함): `resume_gateway_url` 로 재접속 후 op6 RESUME 송신 (`{token, session_id, seq}`). 서버가 `RESUMED` dispatch 로 응답하면 갭 메시지 replay 됨.
+- **InvalidSession (op9)** 의 `d: boolean` 으로 resumable 여부 판정 — `false` 면 세션 클리어.
+- **백오프**: 지수 백오프 `1s → 2s → 4s … cap (default 30s)`. `READY` 또는 `RESUMED` 받으면 `reconnectAttempts` 리셋.
+- **Sharding**: `shard?: [shardId, shardCount]` opt 가 IDENTIFY 에 그대로 들어감. Discord 는 `(guild_id >> 22) % shardCount` 로 결정성 라우팅 — 각 샤드는 disjoint 길드 슬라이스, DM 은 항상 shard 0.
+- **`DiscordShardManager`**: N 개 클라이언트를 5s 간격으로 순차 IDENTIFY (per-bucket rate limit `5s` 이상 강제). 단일 핸들러로 fan-in.
+- **라이프사이클 콜백**: `onLifecycle({type, ...})` 로 `connecting` (attempt+resuming) / `identify` (shard?) / `resume` (sessionId+seq) / `ready` (sessionId+resumeGatewayUrl) / `resumed` / `invalid_session` (resumable) / `close` (code+resumable+willReconnect) / `reconnect_scheduled` (delayMs+resuming) / `fatal` (code+reason) 9 가지 이벤트 노출 — 트레이스 블록(추후 `K1` 부속) 또는 운영 로그에 그대로 흘릴 수 있음.
+
+#### Slack — HTTP Events API ↔ Socket Mode 듀얼 트랜스포트
+
+[packages/channels/slack/src/adapter.ts](D:\ai\agent-platform\packages\channels\slack\src\adapter.ts) — `SlackConfig` 가 `transport: 'http' | 'socket'` discriminated union 으로 갈라짐. v0.7 까지는 HTTP only 였음.
+
+- **`HttpSlackConfig`** (default): 기존 동작 — Events API HTTP webhook + `signingSecret` HMAC 검증 + `port` HTTP 서버.
+- **`SocketSlackConfig`**: [socket-mode-transport.ts](D:\ai\agent-platform\packages\channels\slack\src\socket-mode-transport.ts) 신규.
+  - `apps.connections.open` (Bearer `appToken` xapp-…) 으로 단명 wss URL 획득 → 연결.
+  - 서버가 보내는 **envelope** 구조: `{type: 'events_api'|'interactive'|'slash_commands', envelope_id, payload, accepts_response_payload?}`. 매 envelope 의 `envelope_id` 를 3s 이내에 `{envelope_id}` 로 반송해야 함 (트랜스포트가 자동 ack).
+  - `hello` (num_connections) → 정상 → `disconnect{reason:'warning'}` (1분 heads-up) → 결국 `disconnect{reason:'refresh_requested'}` 시 즉시 close → 새 wss URL 획득 후 재접속. Slack 은 한 시간 단위로 URL refresh 함.
+  - 지수 백오프 + `autoReconnect:false` opt-out.
+- **번역 레이어 공유**: `slack-events.ts` 가 `SlackEventsRequest` / `SlackMessageEvent` 정의를 추출 — HTTP 와 Socket 두 트랜스포트가 동일 dispatcher 로 번역.
+- **테스트 가속**: `socketUrlOverride` 로 `apps.connections.open` 라운드트립 우회 — 로컬 fake WSS 서버에 직접 붙음.
+
+#### WhatsApp — baileys ↔ Cloud API 듀얼 클라이언트
+
+[packages/channels/whatsapp/src/](D:\ai\agent-platform\packages\channels\whatsapp\src\) — `WhatsAppAdapter` 는 `WhatsAppClient` 인터페이스로 추상화돼 있어 v0.8 에서 어댑터 자체는 변경 없이 새 클라이언트만 추가.
+
+- **`createBaileysClient`** (기존, optional peer): QR 페어링 + WebSocket. 그룹 챗 지원, 헤비 디펜던시 (libsignal/proto). `./baileys` 서브패스 export.
+- **`CloudApiWhatsAppClient`** ([cloud-api-client.ts](D:\ai\agent-platform\packages\channels\whatsapp\src\cloud-api-client.ts) 신규, `./cloud` 서브패스 export):
+  - **아웃바운드**: `POST graph.facebook.com/v20.0/{phoneNumberId}/messages` Bearer `accessToken`. 응답 `{messages:[{id}]}` 의 wamid 를 그대로 반환.
+  - **인바운드**: 자체 webhook HTTP 서버.
+    - `GET ?hub.mode=subscribe&hub.verify_token=…&hub.challenge=…` → `verifyToken` 일치 시 challenge echo, 불일치 403.
+    - `POST` → `X-Hub-Signature-256` 헤더 (`sha256=<hex>`) HMAC-SHA256 (raw body, key=`appSecret`) 을 `timingSafeEqual` 로 검증, 실패 시 401. `entry[].changes[].value.messages[]` 를 `WhatsAppMessage` 로 매핑.
+    - `messages[].type` 별 텍스트 추출: `text.body` / `button.text` / `interactive.button_reply.title` / `interactive.list_reply.title`. 미디어는 `image|video|document.caption` → `mediaCaption`. `reaction` 등은 null 반환 (이전 baileys 와 동일 정책).
+  - **그룹 챗 미노출**: Cloud API 는 일반 비즈니스 앱에 그룹 메시지를 노출하지 않음 → `isGroup: false` 고정. 그룹이 필요하면 baileys 사용.
+  - **테스트**: `injectWebhook(payload)` 로 서명 검증 우회.
+
+각 변형의 라이프사이클 이벤트는 `M1` 처럼 별도 trace 블록은 갖지 않고 (채널은 inbound entry), 공통 `[P1] handler` 호출 시점부터 G3/W1 트레이스가 붙는다. 어댑터별 reconnect/ack 활동을 보고 싶으면 각 클라이언트의 `onLifecycle` (Discord) / lifecycle 이벤트 콜백 (Slack Socket) 을 `console` 또는 OTel span 으로 wire 하면 된다.
+
 ---
 
 ## 12. 재생성 가이드 — 코드 업데이트 시 다이어그램 재작성 절차
@@ -1047,19 +1106,24 @@ v0.2 에서 추가된 구조적 트레이스 시스템. 각 블록이 무엇을 
     span<T>(opts, fn): Promise<T>;           // enter/exit 자동 emit + 예외 시 error 이벤트
     close?(): Promise<void>;
   }
-  type TraceBlock = 'G3'|'C1'|'P1'|'E1'|'W1'|'R1'|'R2'|'R3'|'M1';
+  // v0.8: M1/X1/S1 추가 — 이전엔 R3 까지 8 종.
+  type TraceBlock = 'G3'|'C1'|'P1'|'E1'|'W1'|'R1'|'R2'|'R3'|'M1'|'X1'|'S1';
   interface TraceEvent {
     traceId: string; sessionId?: string; agentId?: string;
     block: TraceBlock;
-    event: string;         // 자유 문자열. 블록별 관례는 §13.3 표 참고.
+    event: TraceEventName | (string & {});  // 캐노니컬 이름은 TraceEventNames 참고
     timestamp: number;     // epoch ms
     durationMs?: number;   // exit 이벤트에서만 세팅
+    summary?: string;      // v0.8: 1줄 자연어 요약 (≤120자) — `agent trace show` 가 우선 렌더
     payload?: Record<string, unknown>;
     error?: string;
   }
+  // v0.8: 모듈 경계용 컨텍스트 — TraceLogger 참조 없이 emit 하려는 서브시스템용
+  interface TraceCallContext { traceLogger: TraceLogger; traceId; sessionId?; agentId?; }
   ```
 - **불변량**: `event()` / `span()` 은 절대 throw 하지 않는다. 쓰기 실패(DB 잠김 등)는 조용히 무시 — 계측이 파이프라인을 깨선 안 된다.
 - **기본 구현**: [`SqliteTraceLog`](D:\ai\agent-platform\packages\observability\src\sqlite-trace-log.ts) (SQLite WAL, `node:sqlite` 내장). Opt-out 은 [`NoopTraceLogger`](D:\ai\agent-platform\packages\core\src\contracts\trace-logger.ts).
+- **`summary` 가이드라인**: 모든 emitter 가 채우는 것이 권장. "EGO judged 'enrich' (confidence=0.82)", "claude-opus-4-7: 1240 out tokens, $0.031, ttft=420ms", "memory.search \"deploy\" → 4 hit(s), top score=0.812 in 14ms" 같은 사람이 한 줄로 읽을 수 있는 형태. ≤120자 권장 — 긴 디테일은 `payload` 로. 비어 있으면 `agent trace show` 가 payload digest 로 폴백.
 
 ### 13.2. 배선 체인
 
@@ -1099,7 +1163,9 @@ v0.2 에서 추가된 구조적 트레이스 시스템. 각 블록이 무엇을 
 | **R1** | `packages/agent-worker/src/reasoning/hybrid-reasoner.ts` | `mode_selected` | mode, routerSuggested, planExecuteAvailable |
 | **R2** | `packages/agent-worker/src/reasoning/react-executor.ts` | `tool_call` | toolName, toolStatus(`ok\|denied\|error`), retry |
 | **R3** | `packages/agent-worker/src/reasoning/plan-execute-executor.ts` | `plan_generated` / `replan` / `downgraded_to_react` | stepCount / round, failedStepId / replanCount, reason |
-| **M1** | (Phase B 예정) | — | — |
+| **M1** | `packages/agent-worker/src/model/*-adapter.ts` (v0.8) | `stream_started` / `first_token` / `stream_done` / `stream_error` | model, role(planner/agent/ego), inputTokens, outputTokens, costUsd, ttftMs |
+| **X1** | `packages/memory/src/palace-memory.ts` (v0.8) | `memory_searched` / `memory_ingested` | query(40자 cap), hits, topScore / chunkCount, wing |
+| **S1** | `packages/agent-worker/src/tools/*-sandbox.ts` (v0.8) | `sandbox_acquired` / `sandbox_executed` / `sandbox_released` | sandboxKind(`in_process\|docker`) / toolName, exitCode, durationMs |
 
 **이벤트 이름 canonical 화** (ADR-010): `packages/core/src/contracts/trace-logger.ts` 의 `TraceEventNames` 상수에 W1 관측 이벤트 어휘가 export 되어 있다 (`SESSION_RESOLVED`, `HISTORY_LOADED`, `MEMORY_SEARCHED`, `PROMPT_BUILT`, `REASONER_INVOKED`, `REASONING_STEP`, `REASONING_PLAN`, `REASONING_REPLAN`, `STREAM_DONE`, `SESSION_EVENTS_APPENDED`, `SESSION_APPEND_FAILED`, `MEMORY_INGESTED`). 구현체는 이 문자열을 그대로 `event` 필드에 넣어 다운스트림 로그 해석기의 키 역할을 수행한다.
 
@@ -1151,7 +1217,7 @@ CREATE INDEX idx_trace_events_block  ON trace_events(block, timestamp);
 
 - 기존 `withSpan` (OTel span) 시그니처 / 네이밍 불변. `TraceLogger.span` 은 별개 채널로 공존.
 - `SqliteAuditLog` 의 `ego_audit` 테이블 건드리지 않음 — 감사는 EGO 의 S7 책임, 트레이스는 turn-debug 책임.
-- v0.3 범위 밖 (Phase B): 라이브 `agent trace tail`, M1 ModelAdapter 계측, sub-step verbose, trace diff.
+- v0.8 시점 미완 항목: 라이브 `agent trace tail`, sub-step verbose 모드, trace diff(두 traceId 비교), K1/K2 (LiveToolRegistry · SkillRegistry) 트레이스 블록. v0.3 시점에 "Phase B 예정" 으로 적혀 있던 M1/X1/S1 + `summary` 필드는 v0.8 에서 모두 정식 스펙으로 승격.
 
 ---
 
@@ -1354,3 +1420,14 @@ packages/core/src/schema/phase-format.ts  ── 단일 소스 오브 트루스
   - **§14.6 Webapp Control 폴링 주의 갱신**: "registered adapter 없음" 상태는 더 이상 해당되지 않음 — `channels.list` 는 실제 기동된 어댑터, `cron.list` 는 tasks.json 에 정의된 태스크를 반환.
   - **§12.1 재생성 가이드**: 신규 블록 `[C2']` / `[C2'']` 두 행 추가, `[P1]` 체크포인트에 새 metadata 키 + scheduler start/stop 순서 반영, `[R3]` 체크포인트에 `TRIGGER_3_REL_THRESHOLD` 상수 명시.
   - **테스트 누적**: 685 → 722 (+37: registry 9 + scheduler 22 + replan #3 5 + agent-runner metadata 1). 기존 failing 6 (skills/observability, pre-existing) 변동 없음.
+- **v0.8.0 (2026-04-29)** — 채널 어댑터 보강 트리오 + 트레이스 블록 확장 + 워크플로우 DSL 확장 + planner JSON 모드 + 메모리 액세스 로깅 + 시맨틱 step 보존 (구현 리포 커밋 `f8a7b5c`/`51bf250`/`b1c2872`/`a02be22`/`bce6bd4`/`54f6fb5` 외):
+  - **§11.1 신규 — Discord Gateway Resume + Sharding** ([packages/channels/discord/src/gateway-client.ts](D:\ai\agent-platform\packages\channels\discord\src\gateway-client.ts), 커밋 `a02be22`): READY 의 `session_id` + `resume_gateway_url` 캐시, close 코드 분기(4007/4009 → 세션 폐기 후 IDENTIFY, 4004/4010-4014 → fatal abort, 그 외 → resume_gateway_url 로 op6 RESUME), 지수 백오프(1→30s cap), `shard?: [n,N]` IDENTIFY, `DiscordShardManager` 가 N 클라이언트를 5s 간격으로 IDENTIFY, 9 가지 라이프사이클 콜백. 단위 테스트 +8.
+  - **§11.1 신규 — Slack Socket Mode 트랜스포트** ([packages/channels/slack/src/socket-mode-transport.ts](D:\ai\agent-platform\packages\channels\slack\src\socket-mode-transport.ts) + adapter 분기, 커밋 `bce6bd4`): `SlackConfig` 가 `transport: 'http' | 'socket'` discriminated union. Socket 트랜스포트는 `apps.connections.open` → 단명 wss URL → events_api envelope ack(3s 이내 `{envelope_id}` 반송) + `disconnect{refresh_requested}` 시 즉시 재접속. `slack-events.ts` 추출로 두 트랜스포트가 동일 dispatcher 공유. 단위 테스트 +7.
+  - **§11.1 신규 — WhatsApp Cloud API 클라이언트** ([packages/channels/whatsapp/src/cloud-api-client.ts](D:\ai\agent-platform\packages\channels\whatsapp\src\cloud-api-client.ts), 커밋 `54f6fb5`): baileys 옆 두 번째 `WhatsAppClient` 구현. 아웃바운드 = graph.facebook.com Bearer; 인바운드 = 자체 webhook HTTP 서버 + GET `hub.verify_token` 응답 + POST `X-Hub-Signature-256` HMAC-SHA256 timing-safe 검증 + `entry[].changes[].value.messages[]` 매핑 (text/button/interactive/image/video/document caption). 그룹 챗 미노출 → `isGroup:false` 고정. `./cloud` 서브패스 export. 단위 테스트 +13.
+  - **§13 TraceLogger — M1/X1/S1 정식 블록 + `summary` 필드** ([packages/core/src/contracts/trace-logger.ts](D:\ai\agent-platform\packages\core\src\contracts\trace-logger.ts), 커밋 `b1c2872`): `TraceBlock` 에 `M1` / `X1` / `S1` 추가 — Phase B "예정" 자리에서 정식 스펙으로 승격. `TraceEvent`/`TraceSpanOptions` 가 옵셔널 `summary?: string` 보유 — `agent trace show` 가 우선 렌더, 없으면 payload digest 폴백. `TraceCallContext` 가 모듈 경계용 인터페이스로 격상돼 memory/sandbox/model 어댑터가 `TraceLogger` 직접 참조 없이 emit 가능. `TraceEventNames` 에 `STREAM_STARTED` / `FIRST_TOKEN` / `STREAM_ERROR` / `MEMORY_SEARCHED` / `MEMORY_INGESTED` / `SANDBOX_ACQUIRED` / `SANDBOX_RELEASED` / `SANDBOX_EXECUTED` 추가.
+  - **§8 [R3] — Planner JSON 모드** (커밋 `f8a7b5c`): `PlanExecuteExecutor` 의 3 planner 호출지점이 `responseFormat: { type: 'json_object' }` 전달. OpenAI 는 native `response_format=json_object`, Anthropic 은 system 끝에 `{` prefill 로 우회 — 어떤 프로바이더도 동일하게 강제. parse 실패 → ReAct 다운그레이드 경로 동일.
+  - **§8 [R3] — 시맨틱 step 보존** ([packages/agent-worker/src/reasoning/step-matcher.ts](D:\ai\agent-platform\packages\agent-worker\src\reasoning\step-matcher.ts) 신규, 커밋 `672fd31`): replan 시 step id 가 바뀌어도 의미 같은 prior 성공 step 의 status/observation 승계. `StepMatcher` 인터페이스 + `EmbedderStepMatcher` 기본 구현 (cosine ≥ 0.85). 매칭 순서 = exact id → semantic match → 없으면 fresh. `EmbedFn = (text)=>Promise<Float32Array>` 좁은 시그니처로 memory 패키지 dep 회피. 단위 테스트 +6.
+  - **§9 / §13 X1 — 메모리 액세스 로깅** ([packages/memory/src/palace-memory.ts](D:\ai\agent-platform\packages\memory\src\palace-memory.ts), 커밋 `d2d8d89`): `PalaceMemorySystem.search()` 가 hit 마다 `access_count++` + `memory_access_log` row 기록 + `TraceCallContext` 주입 시 `block:'X1', event:'memory_searched'` emit. env `AGENT_MEMORY_ACCESS_LOG=0|false|off` 로 비활성화.
+  - **곁가지 [workflow] — 함수 / try-catch-finally / scope** ([packages/workflow/src/schema.ts](D:\ai\agent-platform\packages\workflow\src\schema.ts), 커밋 `51bf250`): 기존 5 종(`tool_call`/`sequence`/`parallel`/`conditional`/`loop`)에 `call` (function 호출) / `return` (값 반환) / `try` (try-catch-finally, catch 가 fresh scope frame, finally 는 항상 실행) / `scope` (lexical 변수 스코프) 4 종 추가. depth limit 으로 무한 재귀 차단. `WorkflowTaskRunner` (cron 워크플로우) 도 동일 인터프리터 사용.
+  - **상위 문서 동기**: `harness-engineering.md` 가 v0.7 → v0.8 으로 동반 승격되며 §3.2B.3 device-identity 프로토콜이 8 개 하위 섹션으로 정식 스펙화 (영속 스키마 / enroll·challenge·assert 본문 / 세션 토큰 포맷 / WS 인증 전송 / 위협 모델 + 회복 절차). 본 문서 §14.5 / §14.6 의 webapp 인증 흐름 설명은 그대로 유효 — 변경된 것은 상위 스펙의 detail level 만이다.
+  - **§16 변경 이력 본 엔트리** + §0 헤더 v0.8 변경 요약.
