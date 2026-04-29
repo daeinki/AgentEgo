@@ -1,65 +1,98 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import type WebSocket from 'ws';
 import type { Contracts, OutboundContent, StandardMessage } from '@agent-platform/core';
 import { generateMessageId, generateTraceId, nowMs } from '@agent-platform/core';
 import type { SlackClient } from './slack-client.js';
 import { HttpSlackClient } from './slack-client.js';
 import { verifySlackSignature } from './signing.js';
+import type { SlackEventsRequest, SlackMessageEvent } from './slack-events.js';
+import { SocketModeTransport, type SocketLifecycleEvent } from './socket-mode-transport.js';
 
 type ChannelAdapter = Contracts.ChannelAdapter;
 type ChannelConfig = Contracts.ChannelConfig;
 type HealthStatus = Contracts.HealthStatus;
 type SendResult = Contracts.SendResult;
 
-export interface SlackConfig extends ChannelConfig {
+interface SlackConfigBase extends ChannelConfig {
   type: 'slack';
   /**
    * Bot User OAuth Token (xoxb-...). Required unless `client` is injected.
    */
   botToken?: string;
+  client?: SlackClient;
+  ownerIds?: string[];
+}
+
+export interface HttpSlackConfig extends SlackConfigBase {
+  /** Default — Events API webhook over HTTP. */
+  transport?: 'http';
   /**
    * Slack app signing secret (for Events API verification).
    */
   signingSecret: string;
-  client?: SlackClient;
   /**
    * Port to bind the Events API HTTP server. 0 = OS-assigned.
    */
   port: number;
-  ownerIds?: string[];
 }
 
-interface SlackEventsRequest {
-  type: 'url_verification' | 'event_callback';
-  challenge?: string;
-  event?: SlackMessageEvent;
-  team_id?: string;
+export interface SocketSlackConfig extends SlackConfigBase {
+  /** Socket Mode WebSocket transport. */
+  transport: 'socket';
+  /**
+   * App-Level Token (xapp-…). Slack issues this separately from the bot
+   * token; required to call `apps.connections.open`.
+   */
+  appToken: string;
+  /**
+   * Test/staging override that bypasses `apps.connections.open` and connects
+   * directly to a given WSS URL.
+   */
+  socketUrlOverride?: string;
+  /**
+   * Inject a WebSocket class for tests. Defaults to the `ws` library.
+   */
+  WebSocketImpl?: typeof WebSocket;
+  /**
+   * Auto-reconnect behavior (default: true). Disable in tests that want to
+   * observe a single close.
+   */
+  autoReconnect?: boolean;
+  maxReconnectDelayMs?: number;
+  onLifecycle?: (event: SocketLifecycleEvent) => void;
 }
 
-interface SlackMessageEvent {
-  type: 'message';
-  user?: string;
-  bot_id?: string;
-  text?: string;
-  ts: string;
-  channel: string;
-  channel_type?: 'im' | 'channel' | 'group' | 'mpim';
-}
+export type SlackConfig = HttpSlackConfig | SocketSlackConfig;
 
 /**
- * Slack channel adapter — HTTP server consuming Events API + bot-token client
- * for outbound posts. Signature verification keeps spoofed requests out.
+ * Slack channel adapter — supports two inbound transports:
+ *
+ * - `transport: 'http'` (default): Events API HTTP webhook with signing-
+ *   secret verification. Outbound goes through `chat.postMessage`.
+ * - `transport: 'socket'`: Slack Socket Mode WebSocket. The adapter calls
+ *   `apps.connections.open` to lease a WSS URL, ack envelopes within 3s,
+ *   and reconnects automatically on Slack's hourly URL refresh.
+ *
+ * The translation layer (`toStandardMessage`) is shared — both transports
+ * yield the same Events API event shape.
  */
 export class SlackAdapter implements ChannelAdapter {
   private config!: SlackConfig;
   private client!: SlackClient;
-  private http!: Server;
   private handler?: (msg: StandardMessage) => void;
-  private port = 0;
   private running = false;
+
+  // HTTP-mode state
+  private http?: Server;
+  private port = 0;
+
+  // Socket-mode state
+  private socket?: SocketModeTransport;
 
   async initialize(config: ChannelConfig): Promise<void> {
     if (config['type'] !== 'slack') throw new Error('SlackAdapter expects type=slack');
     this.config = config as SlackConfig;
+
     if (this.config.client) {
       this.client = this.config.client;
     } else if (this.config.botToken) {
@@ -68,30 +101,39 @@ export class SlackAdapter implements ChannelAdapter {
       throw new Error('SlackAdapter requires either `botToken` or `client`');
     }
 
-    this.http = createServer((req, res) => this.handleHttp(req, res));
-    await new Promise<void>((resolve) => {
-      this.http.listen(this.config.port, () => {
-        const addr = this.http.address();
-        this.port = typeof addr === 'object' && addr ? addr.port : this.config.port;
-        resolve();
-      });
-    });
+    if (this.config.transport === 'socket') {
+      await this.startSocketMode(this.config);
+    } else {
+      await this.startHttpMode(this.config);
+    }
     this.running = true;
   }
 
   async shutdown(): Promise<void> {
     this.running = false;
-    await new Promise<void>((resolve, reject) => {
-      this.http.close((err) => (err ? reject(err) : resolve()));
-    });
+    if (this.http) {
+      await new Promise<void>((resolve, reject) => {
+        this.http!.close((err) => (err ? reject(err) : resolve()));
+      });
+    }
+    if (this.socket) {
+      await this.socket.stop();
+    }
     await this.client.close();
   }
 
   async healthCheck(): Promise<HealthStatus> {
+    if (this.config?.transport === 'socket') {
+      return {
+        healthy: this.running && (this.socket?.isOpen() ?? false),
+        lastCheckedAt: nowMs(),
+        message: 'transport=socket',
+      };
+    }
     return {
-      healthy: this.running && this.http.listening,
+      healthy: this.running && (this.http?.listening ?? false),
       lastCheckedAt: nowMs(),
-      message: `port=${this.port}`,
+      message: `transport=http port=${this.port}`,
     };
   }
 
@@ -143,13 +185,45 @@ export class SlackAdapter implements ChannelAdapter {
     this.dispatchEvent(payload);
   }
 
+  /**
+   * HTTP transport only. Returns 0 in socket mode.
+   */
   listeningPort(): number {
     return this.port;
   }
 
-  // ─── Internals ───────────────────────────────────────────────────────────
+  // ─── Transports ──────────────────────────────────────────────────────────
 
-  private async handleHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private async startHttpMode(config: HttpSlackConfig): Promise<void> {
+    this.http = createServer((req, res) => this.handleHttp(config, req, res));
+    await new Promise<void>((resolve) => {
+      this.http!.listen(config.port, () => {
+        const addr = this.http!.address();
+        this.port = typeof addr === 'object' && addr ? addr.port : config.port;
+        resolve();
+      });
+    });
+  }
+
+  private async startSocketMode(config: SocketSlackConfig): Promise<void> {
+    const opts: ConstructorParameters<typeof SocketModeTransport>[0] = {
+      appToken: config.appToken,
+      onEvent: (payload) => this.dispatchEvent(payload),
+    };
+    if (config.socketUrlOverride !== undefined) opts.socketUrlOverride = config.socketUrlOverride;
+    if (config.WebSocketImpl !== undefined) opts.WebSocketImpl = config.WebSocketImpl;
+    if (config.autoReconnect !== undefined) opts.autoReconnect = config.autoReconnect;
+    if (config.maxReconnectDelayMs !== undefined) opts.maxReconnectDelayMs = config.maxReconnectDelayMs;
+    if (config.onLifecycle !== undefined) opts.onLifecycle = config.onLifecycle;
+    this.socket = new SocketModeTransport(opts);
+    await this.socket.start();
+  }
+
+  private async handleHttp(
+    config: HttpSlackConfig,
+    req: IncomingMessage,
+    res: ServerResponse,
+  ): Promise<void> {
     if (req.method !== 'POST') {
       res.writeHead(405).end();
       return;
@@ -159,7 +233,7 @@ export class SlackAdapter implements ChannelAdapter {
     const signature = headerValue(req, 'x-slack-signature') ?? '';
 
     const ok = verifySlackSignature({
-      signingSecret: this.config.signingSecret,
+      signingSecret: config.signingSecret,
       timestamp,
       signature,
       body,
@@ -194,7 +268,7 @@ export class SlackAdapter implements ChannelAdapter {
   private dispatchEvent(payload: SlackEventsRequest): void {
     const ev = payload.event;
     if (!ev || ev.type !== 'message') return;
-    if (ev.bot_id) return; // ignore our own bot messages
+    if (ev.bot_id) return;
     const msg = this.toStandardMessage(ev);
     if (msg) this.handler?.(msg);
   }

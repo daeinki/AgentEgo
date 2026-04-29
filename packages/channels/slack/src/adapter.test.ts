@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createHmac } from 'node:crypto';
+import { AddressInfo } from 'node:net';
+import { WebSocketServer, type WebSocket as ServerWs } from 'ws';
 import type { StandardMessage } from '@agent-platform/core';
 import { SlackAdapter } from './adapter.js';
 import type {
@@ -164,5 +166,92 @@ describe('SlackAdapter', () => {
     await expect(
       a.initialize({ type: 'slack', credentials: {}, signingSecret: 'x', port: 0 } as never),
     ).rejects.toThrow(/botToken.*client/);
+  });
+});
+
+describe('SlackAdapter — Socket Mode', () => {
+  let wss: WebSocketServer;
+  let wsUrl: string;
+  let socketAdapter: SlackAdapter;
+  let socketClient: MockSlackClient;
+
+  beforeEach(async () => {
+    wss = new WebSocketServer({ port: 0 });
+    await new Promise<void>((r) => wss.once('listening', () => r()));
+    const addr = wss.address() as AddressInfo;
+    wsUrl = `ws://127.0.0.1:${addr.port}`;
+    socketClient = new MockSlackClient();
+    socketAdapter = new SlackAdapter();
+  });
+
+  afterEach(async () => {
+    await socketAdapter.shutdown();
+    for (const c of wss.clients) c.terminate();
+    await new Promise<void>((r) => wss.close(() => r()));
+  });
+
+  it('translates an events_api envelope into a StandardMessage', async () => {
+    const handlerCall = new Promise<StandardMessage>((resolve) => {
+      wss.on('connection', (ws: ServerWs) => {
+        ws.send(JSON.stringify({ type: 'hello', num_connections: 1 }));
+        ws.send(
+          JSON.stringify({
+            type: 'events_api',
+            envelope_id: 'env-1',
+            accepts_response_payload: false,
+            payload: {
+              type: 'event_callback',
+              event: {
+                type: 'message',
+                user: 'U-owner',
+                ts: '1700000200.000003',
+                channel: 'D55555',
+                channel_type: 'im',
+                text: 'socket hello',
+              },
+            },
+          }),
+        );
+      });
+      socketAdapter.onMessage((m) => resolve(m));
+    });
+
+    await socketAdapter.initialize({
+      type: 'slack',
+      transport: 'socket',
+      appToken: 'xapp-1',
+      socketUrlOverride: wsUrl,
+      autoReconnect: false,
+      client: socketClient,
+      credentials: {},
+      ownerIds: ['U-owner'],
+    });
+
+    const got = await handlerCall;
+    expect(got.channel.type).toBe('slack');
+    expect(got.conversation.type).toBe('dm');
+    expect(got.sender.isOwner).toBe(true);
+    expect(got.content.type === 'text' && got.content.text).toBe('socket hello');
+    expect(socketAdapter.listeningPort()).toBe(0);
+  });
+
+  it('healthCheck is healthy while socket is open and unhealthy after stop', async () => {
+    wss.on('connection', (ws: ServerWs) => {
+      ws.send(JSON.stringify({ type: 'hello', num_connections: 1 }));
+    });
+    await socketAdapter.initialize({
+      type: 'slack',
+      transport: 'socket',
+      appToken: 'xapp-1',
+      socketUrlOverride: wsUrl,
+      autoReconnect: false,
+      client: socketClient,
+      credentials: {},
+    });
+    // Give the socket a moment to open.
+    await new Promise((r) => setTimeout(r, 30));
+    expect((await socketAdapter.healthCheck()).healthy).toBe(true);
+    await socketAdapter.shutdown();
+    expect((await socketAdapter.healthCheck()).healthy).toBe(false);
   });
 });

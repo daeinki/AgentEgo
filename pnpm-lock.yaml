@@ -67,6 +67,13 @@ importers:
       '@agent-platform/core':
         specifier: workspace:*
         version: link:../../core
+      ws:
+        specifier: ^8.18.0
+        version: 8.20.0
+    devDependencies:
+      '@types/ws':
+        specifier: ^8.5.12
+        version: 8.18.1
 
   packages/channels/telegram:
     dependencies:
