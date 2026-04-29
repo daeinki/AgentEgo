@@ -12,6 +12,10 @@
     "./baileys": {
       "types": "./dist/baileys-client.d.ts",
       "import": "./dist/baileys-client.js"
+    },
+    "./cloud": {
+      "types": "./dist/cloud-api-client.d.ts",
+      "import": "./dist/cloud-api-client.js"
     }
   },
   "scripts": {

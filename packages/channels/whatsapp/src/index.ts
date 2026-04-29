@@ -7,3 +7,5 @@ export type {
 } from './whatsapp-client.js';
 export { createBaileysClient, translateBaileysMessage } from './baileys-client.js';
 export type { BaileysOptions } from './baileys-client.js';
+export { CloudApiWhatsAppClient, translateCloudApiMessage } from './cloud-api-client.js';
+export type { CloudApiOptions } from './cloud-api-client.js';
