@@ -1,6 +1,6 @@
 # TODO — 구현 현황 + 미구현 항목
 
-> 스냅샷 기준일: 2026-04-28
+> 스냅샷 기준일: 2026-04-29
 > 범례: ✅ 구현됨 / ⚠️ 부분·스텁 / ❌ 미구현
 
 ---
@@ -13,11 +13,6 @@
 - [ ] **Skill 실행 sandbox 격리** — 현재 host process 에서 실행. 옵션: (a) DockerSandbox 재사용, (b) Node `vm` 모듈 격리, (c) child_process. (a) 가 보안 강도 가장 높음
 - [ ] **DockerSandbox gVisor 런타임 실 검증** — 코드 옵션은 있으나 실 환경에서 `runsc` 동작·성능 미측정
 - [ ] **보안 감사** — 프롬프트 인젝션 / 토큰 탈취 / 샌드박스 탈출 시나리오 코드 리뷰 + 테스트 케이스 추가
-
-### 채널 어댑터 보강
-- [ ] **Discord Gateway Resume** (gap sequence 복구) / sharding — 현재 단일 샤드, 연결 끊김 시 메시지 누락 가능
-- [ ] **Slack Socket Mode** — 현재 Events API webhook 만, Socket Mode 어댑터 부재
-- [ ] **WhatsApp Cloud API 대안** — 현재 baileys 만, Meta 공식 Cloud API 어댑터 부재
 
 ### 스펙·문서
 - [ ] **ADR-010 (device-identity) 공식 ADR 로 승급** — 구현은 있으나 `harness-engineering.md` 에 ADR-010 본문 누락
@@ -181,13 +176,13 @@
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │             채널 어댑터 계층 (Contracts.ChannelAdapter) ✅                    │
-│  ┌─────────┐ ┌──────────┐ ┌────────┐ ┌─────────────┐ ┌──────────────────┐   │
-│  │ WebChat │ │ Telegram │ │ Slack  │ │ Discord     │ │ WhatsApp          │   │
-│  │ WS ✅   │ │ 롱폴링 ✅ │ │Events ✅│ │ Gateway WS✅│ │ baileys ⚠️ QR     │   │
-│  │         │ │           │ │ ❌     │ │⚠️ 단일 샤드 │ │  실 페어링 미검증 │   │
-│  │         │ │           │ │ Socket │ │❌ Resume    │ │❌ Cloud API 대안 │   │
-│  │         │ │           │ │ Mode   │ │   gap 복구  │ │                  │   │
-│  └─────────┘ └──────────┘ └────────┘ └─────────────┘ └──────────────────┘   │
+│  ┌─────────┐ ┌──────────┐ ┌─────────┐ ┌──────────────┐ ┌─────────────────┐  │
+│  │ WebChat │ │ Telegram │ │ Slack   │ │ Discord      │ │ WhatsApp         │  │
+│  │ WS ✅   │ │ 롱폴링 ✅ │ │ Events✅│ │ Gateway WS✅ │ │ baileys ⚠️       │  │
+│  │         │ │           │ │ Socket✅│ │ Resume ✅    │ │   QR 실 페어링   │  │
+│  │         │ │           │ │ Mode    │ │ Sharding ✅  │ │   미검증         │  │
+│  │         │ │           │ │         │ │ (Manager 포함)│ │ Cloud API ✅    │  │
+│  └─────────┘ └──────────┘ └─────────┘ └──────────────┘ └─────────────────┘  │
 │  ChannelRegistry ✅ — PlatformChannelRegistry 가 어댑터 이벤트/에러 집계      │
 └─────────────────────────────────────────────────────────────────────────────┘
 
@@ -218,7 +213,7 @@
 | X* Observability | `packages/observability` | ✅ |
 | Message Bus | `packages/message-bus` | ✅ (worker-pool 배포 ❌) |
 | Webapp | `packages/webapp` | ✅ (브라우저 실검증 ⚠️) |
-| 채널 5개 | `packages/channels/*` | ✅ / 일부 ⚠️ |
+| 채널 5개 | `packages/channels/*` | ✅ (WhatsApp baileys QR 실 페어링 ⚠️) |
 | ChannelRegistry | `packages/control-plane/src/gateway/platform-channel-registry.ts` | ✅ |
 | Scheduler / CronRegistry | `packages/scheduler` | ✅ |
 | Workflow | `packages/workflow` | ✅ |
@@ -232,6 +227,9 @@ git log 보조용 — 상세 내역은 커밋 메시지 참조.
 
 | 커밋 | 항목 |
 |---|---|
+| `54f6fb5` | channel-whatsapp: Meta Cloud API 클라이언트 (graph.facebook.com outbound + 자체 webhook 서버, X-Hub-Signature-256 HMAC 검증) |
+| `bce6bd4` | channel-slack: Socket Mode 트랜스포트 (apps.connections.open + envelope ack + 자동 재접속, transport 디스크리미네이티드 union) |
+| `a02be22` | channel-discord: Gateway Resume(op6) + sharding (READY session_id 캐시, close 코드 분기, DiscordShardManager) |
 | `51bf250` | workflow: functions / try-catch-finally / scope (call·return·try·scope step kinds, scope frame stack, depth limit) |
 | `f8a7b5c` | agent-worker: planner JSON mode (OpenAI native + Anthropic `{` prefill, 3 planner sites) |
 | `0c99c2d` | docs: memory access logging + replan semantic matching 완료 표시 |
