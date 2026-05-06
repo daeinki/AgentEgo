@@ -7,6 +7,7 @@ import type {
   PhaseEventDetail,
   SessionPolicy,
   StandardMessage,
+  TerminationReason,
 } from '@agent-platform/core';
 import { nowMs } from '@agent-platform/core';
 import { SessionStore } from '@agent-platform/control-plane';
@@ -171,6 +172,7 @@ export class AgentRunner {
     let inputTokens = 0;
     let outputTokens = 0;
     let costUsd: number | undefined;
+    let terminationReason: TerminationReason | undefined;
 
     // U10 Phase 4: prefer the live registry snapshot when wired, so tools
     // registered since the previous turn (e.g. via skill.create) are visible.
@@ -264,7 +266,28 @@ export class AgentRunner {
         // `ev.text` reflects the final reasoning answer; prefer it when present,
         // otherwise keep whatever we accumulated from deltas.
         if (ev.text.length > 0) responseText = ev.text;
+        terminationReason = ev.state.terminationReason;
       }
+    }
+
+    // P1 — defense in depth: if the reasoner still produced no text (P0
+    // synthesis fallback failed, or a future reasoner hits an exit path that
+    // doesn't synthesize), substitute a reason-aware placeholder. This also
+    // unblocks the memory.ingest gate below (which skips when responseText
+    // is empty), so the user message + a non-empty turn record always
+    // survive into palace.db / sessions.db.
+    if (responseText.length === 0) {
+      responseText = renderEmptyResponseFallback(terminationReason);
+      trace?.event({
+        traceId: msg.traceId,
+        sessionId,
+        agentId: this.config.agentId,
+        block: 'W1',
+        event: 'empty_response_fallback',
+        timestamp: Date.now(),
+        summary: `agent emitted no text — using placeholder (termination=${terminationReason ?? 'unknown'})`,
+        payload: { terminationReason: terminationReason ?? null },
+      });
     }
 
     const latencyMs = performance.now() - startTime;
@@ -511,4 +534,20 @@ function extractEgoEnrichment(msg: StandardMessage):
     if (tools.length > 0) out.suggestedTools = tools;
   }
   return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function renderEmptyResponseFallback(reason: TerminationReason | undefined): string {
+  switch (reason) {
+    case 'max_steps':
+      return '도구 호출 단계 한도(max_steps)에 도달해 답변을 마무리하지 못했어요. 어떤 부분을 더 살펴볼까요?';
+    case 'tool_exhaustion':
+      return '도구 호출 예산을 모두 사용해 답변을 마무리하지 못했어요. 어떤 부분이 우선인지 알려주세요.';
+    case 'plan_validation_error':
+      return '계획 단계 응답을 정리하지 못했어요. 다시 한 번 시도해 주세요.';
+    case 'user_abort':
+      return '요청이 중단되었습니다.';
+    case 'hard_error':
+    default:
+      return '내부 처리 중 응답이 비어 있어요. 다시 한 번 시도해 주세요.';
+  }
 }

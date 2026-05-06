@@ -351,6 +351,63 @@ describe('AgentRunner (extended)', () => {
     expect(captured[0]?.egoPerception).toBeUndefined();
   });
 
+  it('substitutes a placeholder and still ingests when reasoner emits empty final text (P1)', async () => {
+    const session = sessionStore.createSession({
+      agentId: 'default',
+      channelType: 'webchat',
+      conversationId: 'c-empty',
+    });
+    const ingestCalls: { userMessage: string; agentResponse: string }[] = [];
+    const recordingMemory: Contracts.MemorySystem = {
+      search: async () => [],
+      ingest: async (input) => {
+        ingestCalls.push({ userMessage: input.userMessage, agentResponse: input.agentResponse });
+        return { chunksAdded: 1, chunksUpdated: 0 };
+      },
+      classify: async () => ({ wing: 'knowledge', confidence: 0.2 }),
+      compact: async () => ({ wing: 'x', archivedChunks: 0, summaryChunkId: '' }),
+    };
+    const emptyFinalReasoner: Contracts.Reasoner = {
+      mode: 'react',
+      async *run(_ctx) {
+        yield {
+          kind: 'final',
+          text: '',
+          state: {
+            mode: 'react',
+            egoDecisionId: null,
+            trace: [],
+            budget: { maxSteps: 8, maxToolCalls: 16, spent: { steps: 8, toolCalls: 16 } },
+            terminationReason: 'max_steps',
+          },
+        };
+      },
+    };
+    const model = new ScriptedModelAdapter(['unused']);
+    const runner = new AgentRunner(
+      sessionStore,
+      model,
+      { agentId: 'default' },
+      { memory: recordingMemory, reasoner: emptyFinalReasoner },
+    );
+
+    const result = await runner.processTurn(session.id, makeMsg('파일 좀 봐줘'));
+
+    expect(result.responseText.length).toBeGreaterThan(0);
+    expect(result.responseText).toContain('max_steps');
+    // Memory ingest must have happened with the placeholder, not the empty
+    // string — this is what unblocks palace.db / sessions.db when the agent
+    // hits a truly empty final.
+    expect(result.ingested).toBe(true);
+    expect(ingestCalls).toHaveLength(1);
+    expect(ingestCalls[0]?.userMessage).toBe('파일 좀 봐줘');
+    expect(ingestCalls[0]?.agentResponse).toBe(result.responseText);
+    // Session events must carry non-empty agent_response content.
+    const history = sessionStore.loadHistory(session.id);
+    const agent = history.find((h) => h.eventType === 'agent_response');
+    expect(agent?.content.length).toBeGreaterThan(0);
+  });
+
   it('ingest failure does not fail the turn', async () => {
     const session = sessionStore.createSession({
       agentId: 'default',

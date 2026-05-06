@@ -64,6 +64,30 @@ class InfiniteToolAdapter implements ModelAdapter {
   }
 }
 
+// Adapter that asks for tools while it has any in the request, but if it
+// receives a request with no tools (the synthesis follow-up call) it answers
+// with text. Used to verify the P0 synthesis fallback fires after budget
+// exhaustion and feeds its result into the final event.
+class ToolThenSynthAdapter implements ModelAdapter {
+  public synthSystemPromptSeen?: string;
+  async *stream(req: CompletionRequest): AsyncIterable<StreamChunk> {
+    if (!req.tools || req.tools.length === 0) {
+      this.synthSystemPromptSeen = req.systemPrompt;
+      yield { type: 'text_delta', text: '도구 결과 요약: 답변' };
+      yield { type: 'usage', inputTokens: 5, outputTokens: 4 };
+      yield { type: 'done', stopReason: 'end_turn' };
+      return;
+    }
+    yield { type: 'tool_call_start', id: 'tc-x', name: 'spin' };
+    yield { type: 'tool_call_delta', id: 'tc-x', args: '{}' };
+    yield { type: 'tool_call_end', id: 'tc-x' };
+    yield { type: 'done', stopReason: 'tool_use' };
+  }
+  getModelInfo() {
+    return { provider: 'mock', model: 'mock' };
+  }
+}
+
 function makeCtx(overrides: Partial<Contracts.ReasoningContext> = {}): Contracts.ReasoningContext {
   return {
     sessionId: 's-1',
@@ -216,6 +240,68 @@ describe('ReactExecutor', () => {
       state: { terminationReason: string };
     };
     expect(final.state.terminationReason).toBe('tool_exhaustion');
+  });
+
+  it('synthesizes a final answer when budget exhausts mid-tool-loop (P0)', async () => {
+    const guard: Contracts.CapabilityGuard = {
+      async check() {
+        return { allowed: true };
+      },
+    };
+    const sandbox: Contracts.ToolSandbox = {
+      async acquire() {
+        return {
+          id: 'sb',
+          status: 'ready',
+          startedAt: nowMs(),
+          resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 },
+        };
+      },
+      async execute(_sb, name) {
+        return { toolName: name, success: true, output: 'observation-payload', durationMs: 1 };
+      },
+      async release() {},
+    };
+    const model = new ToolThenSynthAdapter();
+    const ex = new ReactExecutor(
+      model,
+      {
+        capabilityGuard: guard,
+        toolSandbox: sandbox,
+        sessionPolicy: {
+          sessionId: 's',
+          trustLevel: 'owner',
+          grantedCapabilities: [],
+          deniedCapabilities: [],
+          sandboxMode: 'never',
+          resourceLimits: { maxCpuSeconds: 1, maxMemoryMb: 1, maxDiskMb: 1, networkEnabled: false },
+        },
+      },
+      { maxSteps: 2, maxToolCalls: 5 },
+    );
+    const events = await collect(
+      ex.run(
+        makeCtx({
+          availableTools: [{ name: 'spin', description: 'spin', inputSchema: {} }],
+        }),
+      ),
+    );
+    const final = events.find((e) => e.kind === 'final') as {
+      text: string;
+      state: { terminationReason: string; trace: { kind: string; content: unknown }[] };
+    };
+    // The reasoner ran out of step budget but we synthesized something.
+    expect(final.state.terminationReason).toBe('max_steps');
+    expect(final.text).toBe('도구 결과 요약: 답변');
+    // Synthesis prompt must include the collected trace observations so the
+    // model can answer from them.
+    expect(model.synthSystemPromptSeen).toContain('observation-payload');
+    expect(model.synthSystemPromptSeen).toContain('max_steps');
+    // The synthesized step is recorded so audit/state stays coherent.
+    const finals = final.state.trace.filter((s) => s.kind === 'final');
+    expect(finals.length).toBeGreaterThan(0);
+    const last = finals[finals.length - 1]!.content as { synthesized?: boolean };
+    expect(last.synthesized).toBe(true);
   });
 
   it('returns user_abort termination when AbortSignal is set', async () => {

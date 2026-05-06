@@ -230,7 +230,105 @@ export class ReactExecutor implements Contracts.Reasoner {
       state.terminationReason = budget.spent.steps >= budget.maxSteps ? 'max_steps' : 'hard_error';
     }
 
+    // P0 — when the loop exits mid-tool-cycle without a final answer (model
+    // kept calling tools until budget ran out), synthesize one from the
+    // collected trace so the user gets *something* instead of an empty
+    // response. Mirrors plan-execute's `synthesizeFinal`.
+    const shouldSynthesize =
+      finalText.length === 0 &&
+      state.terminationReason !== 'user_abort' &&
+      state.terminationReason !== 'final_answer' &&
+      state.trace.some((s) => s.kind === 'tool_call' || s.kind === 'observation');
+    if (shouldSynthesize) {
+      finalText = yield* this.synthesizeFromTrace(ctx, state);
+      appendStep(state, {
+        kind: 'final',
+        at: nowMs(),
+        content: { text: finalText, synthesized: true, terminationReason: state.terminationReason },
+      });
+    }
+
     yield { kind: 'final', text: finalText, state };
+  }
+
+  /**
+   * Single non-tool model call that turns the collected ReAct trace into a
+   * user-facing summary. Invoked when budget exhausts before the model ever
+   * stops calling tools — without this, the turn would emit empty text and
+   * downstream memory ingest would silently skip (agent-runner.ts).
+   */
+  private async *synthesizeFromTrace(
+    ctx: Contracts.ReasoningContext,
+    state: ReasoningState,
+  ): AsyncGenerator<Contracts.ReasoningEvent, string> {
+    const summaryLines: string[] = [];
+    let toolCallCount = 0;
+    for (const step of state.trace) {
+      if (step.kind === 'tool_call') {
+        const c = step.content as { name?: string; argsRaw?: string };
+        toolCallCount += 1;
+        summaryLines.push(`- ${c.name ?? '?'}(${(c.argsRaw ?? '').slice(0, 120)})`);
+      } else if (step.kind === 'observation') {
+        const c = step.content as { success?: boolean; text?: string };
+        const status = c.success ? 'ok' : 'error';
+        summaryLines.push(`  → ${status}: ${(c.text ?? '').slice(0, 240)}`);
+      }
+    }
+    const reason = state.terminationReason ?? 'unknown';
+
+    this.deps.traceLogger?.event({
+      traceId: ctx.userMessage.traceId,
+      ...(ctx.sessionId !== undefined ? { sessionId: ctx.sessionId } : {}),
+      ...(ctx.agentId !== undefined ? { agentId: ctx.agentId } : {}),
+      block: 'R1',
+      event: 'synthesis_fallback',
+      timestamp: Date.now(),
+      summary: `react budget ${reason} → synthesizing final from ${toolCallCount} tool round(s)`,
+      payload: {
+        terminationReason: reason,
+        toolCallCount,
+      },
+    });
+
+    const synthSystemPrompt =
+      `${ctx.systemPrompt}\n\n## 도구 실행 기록 (예산 ${reason} 으로 중단)\n${summaryLines.join('\n')}\n\n` +
+      `위 실행 결과를 바탕으로 사용자에게 한국어로 간결한 답변을 제공하라. 추가 도구 호출은 하지 마라.`;
+    const synthMessages: CompletionMessage[] = [
+      ...ctx.priorMessages.map(toCompletionMessage),
+      { role: 'user', content: extractText(ctx.userMessage) },
+    ];
+    const synthTrace: ModelTraceContext | undefined = this.deps.traceLogger
+      ? {
+          traceLogger: this.deps.traceLogger,
+          traceId: ctx.userMessage.traceId,
+          ...(ctx.sessionId !== undefined ? { sessionId: ctx.sessionId } : {}),
+          ...(ctx.agentId !== undefined ? { agentId: ctx.agentId } : {}),
+          role: 'react-synthesis',
+        }
+      : undefined;
+
+    let text = '';
+    const synthRequest: {
+      systemPrompt: string;
+      messages: CompletionMessage[];
+      traceContext?: ModelTraceContext;
+    } = { systemPrompt: synthSystemPrompt, messages: synthMessages };
+    if (synthTrace) synthRequest.traceContext = synthTrace;
+    for await (const chunk of this.modelAdapter.stream(synthRequest)) {
+      if (chunk.type === 'text_delta') {
+        text += chunk.text;
+        yield { kind: 'delta', text: chunk.text };
+      } else if (chunk.type === 'usage') {
+        const ev: Contracts.ReasoningEvent = {
+          kind: 'usage',
+          inputTokens: chunk.inputTokens,
+          outputTokens: chunk.outputTokens,
+        };
+        if (chunk.cost !== undefined) (ev as { cost?: number }).cost = chunk.cost;
+        yield ev;
+      }
+    }
+    return text;
   }
 
   private async executeTool(

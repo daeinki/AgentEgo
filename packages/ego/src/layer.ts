@@ -4,6 +4,7 @@ import type {
   EgoFullConfig,
   EgoMetadata,
   EgoThinkingResult,
+  MemorySearchResult,
   MessageSummary,
   StandardMessage,
 } from '@agent-platform/core';
@@ -463,6 +464,7 @@ export class EgoLayer {
       metadata,
       params,
       gathered.recentHistory,
+      gathered.memories,
     );
 
     await this.auditDecision({
@@ -493,14 +495,28 @@ export class EgoLayer {
     metadata: EgoMetadata,
     params: EgoProcessParams,
     recentHistory: MessageSummary[],
+    gatheredMemories: MemorySearchResult[],
   ): Promise<EgoDecision> {
     switch (effectiveAction) {
       case 'passthrough':
         return { action: 'passthrough' };
 
       case 'enrich': {
-        const enrichment = thinking.judgment.enrichment ?? {};
-        // Stash enrichment hints in the channel metadata so downstream can read them.
+        // Clone so we can backfill addMemories without mutating the LLM's
+        // judgment object (which still flows into audit/trace).
+        const enrichment: NonNullable<EgoThinkingResult['judgment']['enrichment']> = {
+          ...(thinking.judgment.enrichment ?? {}),
+        };
+        // EGO LLM is instructed to fill addMemories only on explicit recall
+        // questions, so most enrich turns leave it empty even when relevant
+        // memories were retrieved. Surface the top-3 gathered chunks so the
+        // agent always sees what context the EGO had on hand.
+        if (
+          (!enrichment.addMemories || enrichment.addMemories.length === 0) &&
+          gatheredMemories.length > 0
+        ) {
+          enrichment.addMemories = gatheredMemories.slice(0, 3).map((m) => m.content);
+        }
         const enriched: StandardMessage = {
           ...originalMessage,
           channel: {
