@@ -11,9 +11,9 @@
 
 ### 보안 · 샌드박스
 
-- [ ] **Skill 실행 sandbox 격리** — 현재 host process 에서 실행. 옵션: (a) DockerSandbox 재사용, (b) Node `vm` 모듈 격리, (c) child_process. (a) 가 보안 강도 가장 높음
+- [x] **Skill 실행 sandbox 격리** — `WorkerSandbox` (`worker_threads`) 도입 (commit `85b3cc3`). per-execute fresh spawn + V8 isolate + `resourceLimits` (256MB old / 32MB young / 64MB code) + `env: {}` (parent process.env 비공유, `shareEnv: true` 옵트인) + `terminate()` on timeout. 추가로 ad-hoc `code.exec` 툴 (turn 내 일회성 실행, `skill.create` 와 동일 staticCheckSource 필터). `ReasoningContext.liveTools` 로 mid-turn 등록된 도구가 같은 턴에서 호출 가능. 옵션 (a) Docker 가 아닌 (변형) — `worker_threads` + capability guard 결합. Docker 는 `DockerSandbox` 로 high-risk 도구(`bash.run`)에 그대로 유지
 - [ ] **DockerSandbox gVisor 런타임 실 검증** — 코드 옵션은 있으나 실 환경에서 `runsc` 동작·성능 미측정
-- [ ] **보안 감사** — 프롬프트 인젝션 / 토큰 탈취 / 샌드박스 탈출 시나리오 코드 리뷰 + 테스트 케이스 추가
+- [x] **보안 감사** — `worker-sandbox.security.test.ts` 21 케이스 (commit `85b3cc3`): static check 우회 시도 11, `Object.prototype` 격리 (parent 무손상), env 차단 + `shareEnv` 옵트인 검증, structuredClone IPC immutability, 무한 루프 timeout, 메모리 폭탄 resourceLimits, 동시 `code.exec` 충돌 없음. **갭 발견 + 수정**: worker default 가 parent env 상속 → `env: {}` 로 강화. 프롬프트 인젝션 / 토큰 탈취 시나리오는 차후 별도 감사로 분리
 
 ### 스펙·문서
 

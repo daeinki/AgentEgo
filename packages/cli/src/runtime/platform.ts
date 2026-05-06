@@ -24,6 +24,7 @@ import {
   LiveToolRegistry,
   PolicyCapabilityGuard,
   buildDefaultTools,
+  codeExecTool,
   ownerPolicy,
   skillAuthoringTools,
   type AgentTool,
@@ -101,6 +102,23 @@ export interface PlatformConfig {
   skillInstallRoot?: string;
   /** Defaults to `true` when `skillInstallRoot` is set. Explicit `false` disables authoring tools only. */
   enableSkillAuthoring?: boolean;
+  /**
+   * Expose the `code.exec` tool — single-shot ESM execution in a `worker_threads`
+   * sandbox (no permanent install). Pairs with `skill.create` for same-turn
+   * code execution: `code.exec` runs ad-hoc snippets without persisting them,
+   * while `skill.create` installs reusable tools (now also visible mid-turn
+   * via the live tool registry — see `agent-worker/reasoning/react-executor`).
+   *
+   * Default: same as the effective value of `enableSkillAuthoring` —
+   * deployments that already let the agent author skills also get the lighter
+   * ad-hoc path. Override with explicit `false` to disable.
+   *
+   * `riskLevel: 'high'`. The static check + worker isolation + `env: {}`
+   * stack lives inside the tool; no extra capability declaration is required
+   * here, but the host should ensure the session policy keeps
+   * `code.exec` behind owner trust.
+   */
+  enableCodeExec?: boolean;
   /**
    * Optional system prompt for the agent LLM. When set, passed through to
    * `AgentConfig.systemPrompt` — PromptBuilder uses it as the base instead of
@@ -390,6 +408,17 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
     // already sees installed skill-backed tools (including the just-seeded
     // builtins).
     await remountInstalledSkills();
+  }
+
+  // `code.exec` is independent of skill installation — works without a
+  // skillInstallRoot. Default: opt-in unless explicitly disabled when skill
+  // authoring is on (same threat model). When skillInstallRoot is unset,
+  // require an explicit `enableCodeExec: true`.
+  const skillAuthoringEffective =
+    config.skillInstallRoot !== undefined && config.enableSkillAuthoring !== false;
+  const enableExec = config.enableCodeExec ?? skillAuthoringEffective;
+  if (enableExec) {
+    liveRegistry.register(codeExecTool());
   }
 
   // Share the palace's embedder with the PlanExecuteExecutor's semantic step
