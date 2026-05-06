@@ -175,6 +175,14 @@ export class AgentRunner {
     // U10 Phase 4: prefer the live registry snapshot when wired, so tools
     // registered since the previous turn (e.g. via skill.create) are visible.
     const availableTools = this.deps.toolRegistry?.descriptors() ?? this.deps.tools ?? [];
+    // Mid-turn binding (Phase post-U10): when a live registry is wired,
+    // expose `liveTools()` on the context so reasoners can re-snapshot
+    // between steps. Tools registered DURING the turn (e.g. by skill.create
+    // → remount in the same ReAct loop) become visible to the next LLM
+    // call without restarting the turn.
+    const liveToolsFn = this.deps.toolRegistry
+      ? () => this.deps.toolRegistry!.descriptors()
+      : undefined;
 
     const ctx: Contracts.ReasoningContext = {
       sessionId,
@@ -183,6 +191,7 @@ export class AgentRunner {
       systemPrompt,
       priorMessages,
       availableTools,
+      ...(liveToolsFn ? { liveTools: liveToolsFn } : {}),
       egoDecisionId,
       ...(egoPerception ? { egoPerception } : {}),
       ...(egoCognition ? { egoCognition } : {}),

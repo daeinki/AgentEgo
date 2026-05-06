@@ -229,4 +229,107 @@ describe('ReactExecutor', () => {
     };
     expect(final.state.terminationReason).toBe('user_abort');
   });
+
+  it('mid-turn tool registration: liveTools() refresh exposes a new tool to the next step', async () => {
+    // Simulates the same-turn skill.create flow:
+    //   Step 1 — model calls 'register_new'. Tool execution mutates the live
+    //            registry (this is what skill.create's remount does in prod).
+    //   Step 2 — model calls 'fresh_tool' which only just appeared. ReactExecutor
+    //            must have re-snapshotted ctx.liveTools() before sending the
+    //            request, otherwise the LLM would see no such tool.
+    const liveMap = new Map<string, Contracts.ToolDescriptor>([
+      ['register_new', { name: 'register_new', description: 'reg', inputSchema: {} }],
+    ]);
+
+    const requestsSent: Array<string[]> = [];
+    let call = 0;
+    const model: ModelAdapter = {
+      async *stream(req: CompletionRequest): AsyncIterable<StreamChunk> {
+        requestsSent.push((req.tools ?? []).map((t) => t.name));
+        call += 1;
+        if (call === 1) {
+          yield { type: 'tool_call_start', id: 'tc-1', name: 'register_new' };
+          yield { type: 'tool_call_delta', id: 'tc-1', args: '{}' };
+          yield { type: 'tool_call_end', id: 'tc-1' };
+          yield { type: 'done', stopReason: 'tool_use' };
+          return;
+        }
+        if (call === 2) {
+          yield { type: 'tool_call_start', id: 'tc-2', name: 'fresh_tool' };
+          yield { type: 'tool_call_delta', id: 'tc-2', args: '{"y":2}' };
+          yield { type: 'tool_call_end', id: 'tc-2' };
+          yield { type: 'done', stopReason: 'tool_use' };
+          return;
+        }
+        yield { type: 'text_delta', text: 'all good.' };
+        yield { type: 'done', stopReason: 'end_turn' };
+      },
+      getModelInfo: () => ({ provider: 'mock', model: 'mock' }),
+    };
+
+    const guard: Contracts.CapabilityGuard = {
+      async check() {
+        return { allowed: true };
+      },
+    };
+    const calls: string[] = [];
+    const sandbox: Contracts.ToolSandbox = {
+      async acquire() {
+        return {
+          id: 'sb',
+          status: 'ready',
+          startedAt: nowMs(),
+          resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 },
+        };
+      },
+      async execute(_sb, name, args) {
+        calls.push(`${name}:${JSON.stringify(args)}`);
+        if (name === 'register_new') {
+          // Simulate skill.create's remount → registry gains a new tool.
+          liveMap.set('fresh_tool', {
+            name: 'fresh_tool',
+            description: 'mid-turn skill',
+            inputSchema: {},
+          });
+          return {
+            toolName: name,
+            success: true,
+            output: '{"mountedNow":true}',
+            durationMs: 1,
+          };
+        }
+        return { toolName: name, success: true, output: 'ok', durationMs: 1 };
+      },
+      async release() {},
+    };
+
+    const ex = new ReactExecutor(model, {
+      capabilityGuard: guard,
+      toolSandbox: sandbox,
+      sessionPolicy: {
+        sessionId: 's-1',
+        trustLevel: 'owner',
+        grantedCapabilities: [],
+        deniedCapabilities: [],
+        sandboxMode: 'never',
+        resourceLimits: { maxCpuSeconds: 1, maxMemoryMb: 1, maxDiskMb: 1, networkEnabled: false },
+      },
+    });
+    await collect(
+      ex.run(
+        makeCtx({
+          availableTools: [...liveMap.values()],
+          liveTools: () => [...liveMap.values()],
+        }),
+      ),
+    );
+
+    // Step 1 sees only the original tool.
+    expect(requestsSent[0]).toEqual(['register_new']);
+    // Step 2 sees the freshly-registered tool — proof that liveTools() was
+    // re-evaluated AFTER step 1's tool execution mutated the registry.
+    expect(requestsSent[1]).toEqual(expect.arrayContaining(['register_new', 'fresh_tool']));
+    // The 'fresh_tool' was actually invocable in step 2.
+    expect(calls.some((c) => c.startsWith('fresh_tool:'))).toBe(true);
+  });
 });

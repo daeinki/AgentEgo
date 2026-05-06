@@ -56,6 +56,16 @@ export interface ReasoningContext {
     toolName?: string;
   }[];
   availableTools: ToolDescriptor[];
+  /**
+   * Optional live tool registry. When wired, reasoners SHOULD re-read
+   * `liveTools()` between steps to pick up tools registered mid-turn (e.g.
+   * via `skill.create` or `code.exec`-spawned skills). Falls back to the
+   * static `availableTools` snapshot when absent.
+   *
+   * Implementation must be cheap and synchronous — no I/O. Typical impl
+   * returns `LiveToolRegistry.descriptors()`.
+   */
+  liveTools?: () => ToolDescriptor[];
   budget?: ReasoningBudget;
   egoDecisionId: string | null;
   /**

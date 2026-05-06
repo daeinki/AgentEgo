@@ -68,12 +68,25 @@ export class ReactExecutor implements Contracts.Reasoner {
     const messages: CompletionMessage[] = [...ctx.priorMessages.map(toCompletionMessage)];
     messages.push({ role: 'user', content: extractText(ctx.userMessage) });
 
-    const canExecuteTools =
-      ctx.availableTools.length > 0 &&
-      this.deps.toolSandbox !== undefined &&
-      this.deps.capabilityGuard !== undefined;
+    const hasSandboxStack =
+      this.deps.toolSandbox !== undefined && this.deps.capabilityGuard !== undefined;
 
-    const toolDefs = canExecuteTools ? ctx.availableTools.map(toToolDefinition) : undefined;
+    /**
+     * Re-snapshot tools every step. When `ctx.liveTools` is wired (see
+     * ReasoningContext docs), tools registered mid-turn (e.g. via
+     * `skill.create` or `code.exec` follow-ups) become visible to the next
+     * LLM call without restarting the turn. Without `liveTools`, falls back
+     * to the initial `availableTools` snapshot — same behavior as before.
+     */
+    const snapshotTools = (): {
+      tools: Contracts.ToolDescriptor[];
+      toolDefs: ToolDefinition[] | undefined;
+    } => {
+      const tools = ctx.liveTools?.() ?? ctx.availableTools;
+      const canExec = tools.length > 0 && hasSandboxStack;
+      return { tools, toolDefs: canExec ? tools.map(toToolDefinition) : undefined };
+    };
+
     const retryCounts = new Map<string, number>();
 
     let finalText = '';
@@ -98,8 +111,9 @@ export class ReactExecutor implements Contracts.Reasoner {
             role: 'react',
           } satisfies ModelTraceContext)
         : undefined;
+      const { toolDefs: stepToolDefs } = snapshotTools();
       for await (const chunk of this.modelAdapter.stream(
-        buildRequest(ctx.systemPrompt, messages, toolDefs, traceContext),
+        buildRequest(ctx.systemPrompt, messages, stepToolDefs, traceContext),
       )) {
         if (ctx.abortSignal?.aborted) {
           state.terminationReason = 'user_abort';
