@@ -23,6 +23,7 @@ import {
   InProcessSandbox,
   LiveToolRegistry,
   PolicyCapabilityGuard,
+  binaryRunTool,
   buildDefaultTools,
   codeExecTool,
   ownerPolicy,
@@ -119,6 +120,29 @@ export interface PlatformConfig {
    * `code.exec` behind owner trust.
    */
   enableCodeExec?: boolean;
+  /**
+   * Expose the `binary.run` tool — execute scripts/binaries inside a hardened
+   * Docker container with the agent's `skillInstallRoot` bind-mounted
+   * read-only at `/skills`. Pairs with `skill.create` (`fs.write` writes the
+   * binary to skill dir → `binary.run` invokes it via container).
+   *
+   * Default OFF — requires Docker on the host AND a configured
+   * `skillInstallRoot`. Explicit opt-in only because:
+   *   1. blast radius is bigger than `code.exec` (arbitrary binaries, not
+   *      JS-only),
+   *   2. it requires a working DockerSandbox stack,
+   *   3. the default image (`python:3.12-slim`) is opinionated.
+   *
+   * The interpreter whitelist (python3 / node / bash / sh) and read-only
+   * bind-mount keep the surface bounded; see `binary-run-tool.ts` for the
+   * full threat model.
+   */
+  enableBinaryRun?: boolean;
+  /**
+   * Override the default container image used by `binary.run` when callers
+   * don't pass `args.image`. Default `python:3.12-slim`.
+   */
+  binaryRunImage?: string;
   /**
    * Optional system prompt for the agent LLM. When set, passed through to
    * `AgentConfig.systemPrompt` — PromptBuilder uses it as the base instead of
@@ -419,6 +443,26 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
   const enableExec = config.enableCodeExec ?? skillAuthoringEffective;
   if (enableExec) {
     liveRegistry.register(codeExecTool());
+  }
+
+  // `binary.run` requires both DockerSandbox-capable infra AND a
+  // skillInstallRoot to bind-mount. Default OFF — explicit opt-in only.
+  // Caller is responsible for routing this tool through DockerSandbox; if it
+  // ends up in InProcessSandbox the tool's `execute()` returns an error
+  // result rather than running unguarded.
+  if (config.enableBinaryRun === true) {
+    if (!config.skillInstallRoot) {
+      throw new Error(
+        'enableBinaryRun requires `skillInstallRoot` to be set — the tool bind-mounts that path read-only into the container',
+      );
+    }
+    const binaryRunDeps: Parameters<typeof binaryRunTool>[0] = {
+      skillInstallRoot: config.skillInstallRoot,
+    };
+    if (config.binaryRunImage !== undefined) binaryRunDeps.defaultImage = config.binaryRunImage;
+    // Cast to AgentTool so the live registry accepts it; DockerSandbox-aware
+    // dispatchers use the structural `runsInContainer` check to route.
+    liveRegistry.register(binaryRunTool(binaryRunDeps) as unknown as AgentTool);
   }
 
   // Share the palace's embedder with the PlanExecuteExecutor's semantic step

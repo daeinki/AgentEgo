@@ -31,6 +31,12 @@ export type {
   WorkerResourceLimits,
 } from './tools/worker-sandbox.js';
 export { codeExecTool, type CodeExecToolDeps } from './tools/code-exec-tool.js';
+export {
+  binaryRunTool,
+  INTERPRETER_WHITELIST,
+  type BinaryRunToolDeps,
+  type AllowedInterpreter,
+} from './tools/binary-run-tool.js';
 export { DockerContainerRuntime, buildDockerArgs } from './tools/container-runtime.js';
 export type {
   ContainerRuntime,

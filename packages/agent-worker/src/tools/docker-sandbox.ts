@@ -156,7 +156,19 @@ export class DockerSandbox implements ToolSandbox {
     policy: SessionPolicy,
     timeoutMs: number,
   ): Promise<ToolResult> {
-    const spec = tool.dockerCommand(args);
+    let spec: DockerCommandSpec;
+    try {
+      spec = tool.dockerCommand(args);
+    } catch (err) {
+      // dockerCommand validates the args; rejected inputs (path traversal,
+      // missing binary, bad interpreter) become a normal ToolResult error.
+      return {
+        toolName: tool.name,
+        success: false,
+        error: (err as Error).message,
+        durationMs: 0,
+      };
+    }
     const limits: ResourceLimits = {
       cpus: (spec.cpus ?? policy.resourceLimits.maxCpuSeconds > 0) ? 0.5 : undefined,
       memoryMb: spec.memoryMb ?? policy.resourceLimits.maxMemoryMb,
@@ -172,6 +184,7 @@ export class DockerSandbox implements ToolSandbox {
     if (spec.env !== undefined) runOpts.env = spec.env;
     if (spec.cwd !== undefined) runOpts.cwd = spec.cwd;
     if (spec.stdinData !== undefined) runOpts.stdinData = spec.stdinData;
+    if (spec.mounts !== undefined) runOpts.mounts = spec.mounts;
     if (this.config.gvisorRuntime !== undefined) runOpts.runtime = this.config.gvisorRuntime;
 
     const result = await this.config.runtime.runOnce(runOpts);
@@ -217,6 +230,12 @@ export interface DockerCommandSpec {
   memoryMb?: number;
   networkEnabled?: boolean;
   readOnly?: boolean;
+  /**
+   * Bind mounts forwarded to the container runtime. Tools requiring this
+   * (e.g. `binary.run`) populate it; everything else leaves it undefined and
+   * gets a hermetic container with only its rootfs.
+   */
+  mounts?: Array<{ source: string; target: string; readonly?: boolean }>;
 }
 
 export function isDockerTool(tool: AgentTool | DockerTool): tool is DockerTool {

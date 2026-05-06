@@ -46,6 +46,15 @@ export interface RunOptions {
    * Container runtime to use (`runsc` for gVisor). Omit to use Docker default.
    */
   runtime?: string;
+  /**
+   * Bind mounts. Each entry maps a host path into the container.
+   *
+   * Default `readonly: true` — the only legitimate caller today is
+   * `binary.run` exposing the agent's skill install dir, and that surface is
+   * meant to be read-only (host-side fs.write happens via worker, container
+   * just runs what's there).
+   */
+  mounts?: Array<{ source: string; target: string; readonly?: boolean }>;
 }
 
 export interface ContainerResult {
@@ -96,6 +105,12 @@ export function buildDockerArgs(opts: RunOptions): string[] {
   }
 
   if (opts.cwd) args.push('-w', opts.cwd);
+
+  for (const m of opts.mounts ?? []) {
+    // `--mount` (over `-v`) gives explicit ro/rw + path-with-comma safety.
+    const ro = m.readonly !== false;
+    args.push('--mount', `type=bind,src=${m.source},dst=${m.target}${ro ? ',readonly' : ''}`);
+  }
 
   args.push(opts.image, ...opts.command);
   return args;
