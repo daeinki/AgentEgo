@@ -48,7 +48,7 @@ function traceListTool() {
   return {
     name: 'trace.list',
     description:
-      'List recent turn traces (newest first) from the agent\'s own ' +
+      "List recent turn traces (newest first) from the agent's own " +
       'pipeline-block log. Each row shows startedAt, traceId, sessionId, ' +
       'total duration, EGO decision, and a preview of the user message. ' +
       'Use this to discover recent activity; call trace.show for the full ' +
@@ -139,11 +139,7 @@ function traceShowTool() {
           start,
         );
       }
-      return ok(
-        'trace.show',
-        renderTimeline(events, { blockFilter, maxEvents }),
-        start,
-      );
+      return ok('trace.show', renderTimeline(events, { blockFilter, maxEvents }), start);
     },
   };
 }
@@ -184,9 +180,7 @@ function traceLastTool() {
         return ok('trace.last', 'no traces yet.', start);
       }
       const { summary, events } = result.value;
-      const header = summary
-        ? `${formatListHeader()}\n${formatListRow(summary)}\n\n`
-        : '';
+      const header = summary ? `${formatListHeader()}\n${formatListRow(summary)}\n\n` : '';
       return ok(
         'trace.last',
         capOutput(header + renderTimeline(events, { maxEvents: 200 })),
@@ -224,9 +218,7 @@ function normalizeShowArgs(args) {
   const traceId = a.traceId.trim();
   let blockFilter;
   if (Array.isArray(a.blockFilter)) {
-    const filtered = a.blockFilter.filter(
-      (b) => typeof b === 'string' && b.trim().length > 0,
-    );
+    const filtered = a.blockFilter.filter((b) => typeof b === 'string' && b.trim().length > 0);
     if (filtered.length > 0) blockFilter = new Set(filtered.map((b) => b.trim()));
   }
   let maxEvents = typeof a.maxEvents === 'number' ? a.maxEvents : 200;
@@ -416,7 +408,8 @@ function renderTimeline(events, options = {}) {
   const lines = shown.map((ev) => {
     const offsetMs = ev.timestamp - t0;
     const offset = offsetMs < 1000 ? `${offsetMs}ms` : `${(offsetMs / 1000).toFixed(2)}s`;
-    const dur = ev.durationMs !== null && ev.durationMs !== undefined ? ` (${ev.durationMs}ms)` : '';
+    const dur =
+      ev.durationMs !== null && ev.durationMs !== undefined ? ` (${ev.durationMs}ms)` : '';
     const payload =
       ev.payload && typeof ev.payload === 'object'
         ? ` ${summarizePayload(ev.block, ev.payload)}`
@@ -485,8 +478,7 @@ function capOutput(s) {
 
 function renderMissing(path) {
   return (
-    `no trace DB at ${path}. Tracing may be disabled (AGENT_TRACE=0) ` +
-    `or no turn has run yet.`
+    `no trace DB at ${path}. Tracing may be disabled (AGENT_TRACE=0) ` + `or no turn has run yet.`
   );
 }
 

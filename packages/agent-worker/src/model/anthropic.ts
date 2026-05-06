@@ -127,7 +127,12 @@ export class AnthropicAdapter implements ModelAdapter {
         timestamp: firstTokenAt,
         durationMs: firstTokenAt - startedAt,
         summary: `anthropic ${this.model}: first token after ${firstTokenAt - startedAt}ms (ttft)`,
-        payload: { provider: 'anthropic', model: this.model, role, ttftMs: firstTokenAt - startedAt },
+        payload: {
+          provider: 'anthropic',
+          model: this.model,
+          role,
+          ttftMs: firstTokenAt - startedAt,
+        },
       });
     };
 
@@ -232,9 +237,7 @@ export class AnthropicAdapter implements ModelAdapter {
     return { provider: 'anthropic', model: this.model };
   }
 
-  private toAnthropicMessages(
-    messages: CompletionMessage[],
-  ): Anthropic.MessageParam[] {
+  private toAnthropicMessages(messages: CompletionMessage[]): Anthropic.MessageParam[] {
     return messages.map((msg) => {
       if (msg.role === 'tool') {
         return {

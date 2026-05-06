@@ -80,9 +80,7 @@ export async function hybridSearchDetailed(
     const structureBoost = ctx.preferredWings?.includes(chunk.wing) ? 1 : 0;
 
     const combined =
-      weights.bm25 * bm25 +
-      weights.vector * vector +
-      weights.structureBoost * structureBoost;
+      weights.bm25 * bm25 + weights.vector * vector + weights.structureBoost * structureBoost;
 
     return { chunk, bm25, vector, structureBoost, combined };
   });

@@ -91,10 +91,7 @@ describe('DiscordAdapter', () => {
     adapter.onMessage(() => {
       called = true;
     });
-    adapter.injectMessage(
-      makeMessage({ author: { id: 'B-1', username: 'bot', bot: true } }),
-      true,
-    );
+    adapter.injectMessage(makeMessage({ author: { id: 'B-1', username: 'bot', bot: true } }), true);
     expect(called).toBe(false);
   });
 

@@ -1,10 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { AddressInfo } from 'node:net';
 import { WebSocketServer, type WebSocket as ServerWs } from 'ws';
-import {
-  SocketModeTransport,
-  type SocketLifecycleEvent,
-} from './socket-mode-transport.js';
+import { SocketModeTransport, type SocketLifecycleEvent } from './socket-mode-transport.js';
 import type { SlackEventsRequest } from './slack-events.js';
 
 interface FakeSocket {
@@ -121,7 +118,9 @@ describe('SocketModeTransport', () => {
         JSON.stringify({
           type: 'interactive',
           envelope_id: 'i-1',
-          payload: { /* opaque */ },
+          payload: {
+            /* opaque */
+          },
         }),
       );
     });
@@ -148,8 +147,7 @@ describe('SocketModeTransport', () => {
         if (connections === 1) {
           // Send disconnect to force a reconnect.
           setTimeout(
-            () =>
-              ws.send(JSON.stringify({ type: 'disconnect', reason: 'refresh_requested' })),
+            () => ws.send(JSON.stringify({ type: 'disconnect', reason: 'refresh_requested' })),
             10,
           );
         } else {

@@ -96,7 +96,10 @@ export class DeviceNodeServer {
    * Send a push notification to a paired device. Returns false if the device
    * isn't currently connected.
    */
-  pushTo(deviceId: string, notification: Omit<Extract<DeviceOutbound, { type: 'push' }>, 'type'>): boolean {
+  pushTo(
+    deviceId: string,
+    notification: Omit<Extract<DeviceOutbound, { type: 'push' }>, 'type'>,
+  ): boolean {
     const conn = this.connections.get(deviceId);
     if (!conn || conn.ws.readyState !== conn.ws.OPEN) return false;
     conn.ws.send(encodeOutbound({ type: 'push', ...notification }));
@@ -106,10 +109,25 @@ export class DeviceNodeServer {
   /**
    * Snapshot of currently-connected devices. Useful for a "paired devices" UI.
    */
-  connectedDevices(): Array<{ deviceId: string; info: DeviceInfo | undefined; pairedAt?: number; lastHeartbeatMs?: number }> {
-    const out: Array<{ deviceId: string; info: DeviceInfo | undefined; pairedAt?: number; lastHeartbeatMs?: number }> = [];
+  connectedDevices(): Array<{
+    deviceId: string;
+    info: DeviceInfo | undefined;
+    pairedAt?: number;
+    lastHeartbeatMs?: number;
+  }> {
+    const out: Array<{
+      deviceId: string;
+      info: DeviceInfo | undefined;
+      pairedAt?: number;
+      lastHeartbeatMs?: number;
+    }> = [];
     for (const [deviceId, conn] of this.connections) {
-      const entry: { deviceId: string; info: DeviceInfo | undefined; pairedAt?: number; lastHeartbeatMs?: number } = {
+      const entry: {
+        deviceId: string;
+        info: DeviceInfo | undefined;
+        pairedAt?: number;
+        lastHeartbeatMs?: number;
+      } = {
         deviceId,
         info: conn.info,
       };
@@ -189,10 +207,7 @@ export class DeviceNodeServer {
     });
   }
 
-  private handleMessage(
-    conn: Connection,
-    env: Extract<DeviceInbound, { type: 'message' }>,
-  ): void {
+  private handleMessage(conn: Connection, env: Extract<DeviceInbound, { type: 'message' }>): void {
     if (!conn.deviceId) {
       this.safeSend(conn.ws, { type: 'error', code: 'unpaired', message: 'pair first' });
       return;

@@ -49,7 +49,12 @@ describe('Style presets', () => {
   it('exposes exactly four documented presets', () => {
     const names = Object.keys(STYLE_PRESETS).sort();
     expect(names).toEqual(
-      ['analytical-precise', 'casual-friendly', 'creative-expressive', 'professional-concise'].sort(),
+      [
+        'analytical-precise',
+        'casual-friendly',
+        'creative-expressive',
+        'professional-concise',
+      ].sort(),
     );
   });
 

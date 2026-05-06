@@ -127,7 +127,9 @@ export class RpcServer implements UpgradeMount {
     if (!handler) {
       safeSend(
         ws,
-        encodeFrame(errorFrame(req.id, RpcErrorCode.MethodNotFound, `method not found: ${req.method}`)),
+        encodeFrame(
+          errorFrame(req.id, RpcErrorCode.MethodNotFound, `method not found: ${req.method}`),
+        ),
       );
       return;
     }

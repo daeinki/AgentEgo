@@ -112,10 +112,7 @@ function truncateToBudget(text: string, maxTokens: number): string {
   return lines.join('\n');
 }
 
-function scoreBehavior(
-  b: Persona['learnedBehaviors'][number],
-  signal: NormalizedSignal,
-): number {
+function scoreBehavior(b: Persona['learnedBehaviors'][number], signal: NormalizedSignal): number {
   const haystack = `${b.trigger} ${b.learned}`.toLowerCase();
   let overlap = 0;
   for (const entity of signal.entities) {
@@ -129,10 +126,7 @@ function scoreBehavior(
   return overlap * 0.7 + b.confidence * 0.2 + recency * 0.1;
 }
 
-function scoreExpertise(
-  e: Persona['domainExpertise'][number],
-  signal: NormalizedSignal,
-): number {
+function scoreExpertise(e: Persona['domainExpertise'][number], signal: NormalizedSignal): number {
   const haystack = [e.domain, ...e.subTopics].join(' ').toLowerCase();
   let overlap = 0;
   for (const entity of signal.entities) {
@@ -200,9 +194,7 @@ export class FilePersonaManager implements PersonaManager {
     ];
 
     if (this.config.snapshot.includeRelationshipContext) {
-      lines.push(
-        `- 관계: ${rel.communicationMaturity}, trustLevel=${rel.trustLevel}.`,
-      );
+      lines.push(`- 관계: ${rel.communicationMaturity}, trustLevel=${rel.trustLevel}.`);
       if (rel.knownPreferences.length) {
         lines.push(`- 선호: ${rel.knownPreferences.slice(0, 3).join(', ')}.`);
       }
@@ -219,9 +211,7 @@ export class FilePersonaManager implements PersonaManager {
     }
 
     if (topExpertise.length) {
-      lines.push(
-        `- 관련 전문성: ${topExpertise.map((t) => t.item.domain).join(', ')}.`,
-      );
+      lines.push(`- 관련 전문성: ${topExpertise.map((t) => t.item.domain).join(', ')}.`);
     }
 
     const raw = `당신의 성격:\n${lines.join('\n')}`;
@@ -230,9 +220,7 @@ export class FilePersonaManager implements PersonaManager {
 
     return {
       summary: truncated,
-      relevantBehaviors: topBehaviors.map(
-        ({ item }) => `${item.trigger} → ${item.learned}`,
-      ),
+      relevantBehaviors: topBehaviors.map(({ item }) => `${item.trigger} → ${item.learned}`),
       relevantExpertise: topExpertise.map(({ item }) => item.domain),
       estimatedTokens: estimateTokens(truncated),
     };

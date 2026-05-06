@@ -50,12 +50,15 @@ async function startStub(options: StubOptions): Promise<{
       const handler = options.methods[frame.method];
       const send = (obj: unknown) => ws.send(JSON.stringify(obj));
       if (!handler) {
-        send({ jsonrpc: '2.0', id: frame.id, error: { code: -32601, message: 'method not found' } });
+        send({
+          jsonrpc: '2.0',
+          id: frame.id,
+          error: { code: -32601, message: 'method not found' },
+        });
         return;
       }
       handler(frame.params, {
-        notify: (method, params) =>
-          send({ jsonrpc: '2.0', method, params }),
+        notify: (method, params) => send({ jsonrpc: '2.0', method, params }),
       })
         .then((result) => send({ jsonrpc: '2.0', id: frame.id, result }))
         .catch((err: Error) =>
@@ -126,11 +129,15 @@ describe('RpcClient', () => {
     });
     const client = new RpcClient({ url: stub.url, authToken: 'good-token' });
     const deltas: string[] = [];
-    await client.call('chat.send', { text: 'hi' }, {
-      onNotification: (method, p) => {
-        if (method === 'chat.delta') deltas.push((p as { text: string }).text);
+    await client.call(
+      'chat.send',
+      { text: 'hi' },
+      {
+        onNotification: (method, p) => {
+          if (method === 'chat.delta') deltas.push((p as { text: string }).text);
+        },
       },
-    });
+    );
     expect(deltas).toEqual(['echo:hi', '!']);
     client.close();
   });

@@ -146,9 +146,7 @@ export class ChatInputEl extends LitElement {
   }
 
   private handleNewSession(): void {
-    this.dispatchEvent(
-      new CustomEvent('chat-new-session', { bubbles: true, composed: true }),
-    );
+    this.dispatchEvent(new CustomEvent('chat-new-session', { bubbles: true, composed: true }));
   }
 }
 

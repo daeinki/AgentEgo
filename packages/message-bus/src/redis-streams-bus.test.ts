@@ -129,7 +129,11 @@ describe('RedisStreamsBus', () => {
 
   it('ensureGroup creates the consumer group on first subscribe', async () => {
     redis.queueRead(null);
-    const sub = await bus.subscribe('inbound', { group: 'new-group', consumer: 'c', blockMs: 10 }, async () => {});
+    const sub = await bus.subscribe(
+      'inbound',
+      { group: 'new-group', consumer: 'c', blockMs: 10 },
+      async () => {},
+    );
     await new Promise((r) => setTimeout(r, 30));
     await sub.unsubscribe();
     expect(redis.groups.get('agent:inbound')?.has('new-group')).toBe(true);
@@ -152,13 +156,9 @@ describe('RedisStreamsBus', () => {
   it('skips entries without a `msg` field', async () => {
     redis.queueRead([['agent:x', [['1-0', ['otherField', 'nope']]]]]);
     const received: unknown[] = [];
-    const sub = await bus.subscribe(
-      'x',
-      { group: 'g', consumer: 'c', blockMs: 10 },
-      async (e) => {
-        received.push(e);
-      },
-    );
+    const sub = await bus.subscribe('x', { group: 'g', consumer: 'c', blockMs: 10 }, async (e) => {
+      received.push(e);
+    });
     await new Promise((r) => setTimeout(r, 30));
     await sub.unsubscribe();
     expect(received).toEqual([]);

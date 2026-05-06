@@ -25,7 +25,13 @@ export function StatusLine({
   error,
 }: Props): React.JSX.Element {
   const statusColor =
-    status === 'open' ? 'green' : status === 'reconnecting' ? 'yellow' : status === 'connecting' ? 'cyan' : 'red';
+    status === 'open'
+      ? 'green'
+      : status === 'reconnecting'
+        ? 'yellow'
+        : status === 'connecting'
+          ? 'cyan'
+          : 'red';
   const statusLabel =
     status === 'open'
       ? '● connected'
@@ -39,13 +45,13 @@ export function StatusLine({
     <Box borderStyle="single" borderColor="gray" paddingX={1} justifyContent="space-between">
       <Box>
         <Text color={statusColor}>{statusLabel}</Text>
-        <Text color="gray">  {url}</Text>
+        <Text color="gray"> {url}</Text>
       </Box>
       <Box>
-        {model ? <Text color="magenta">{model}  </Text> : null}
+        {model ? <Text color="magenta">{model} </Text> : null}
         <Text color="gray">session: </Text>
         <Text color="cyan">{activeSessionId ? truncate(activeSessionId, 12) : '(new)'}</Text>
-        {error ? <Text color="red">  err: {truncate(error, 40)}</Text> : null}
+        {error ? <Text color="red"> err: {truncate(error, 40)}</Text> : null}
       </Box>
     </Box>
   );

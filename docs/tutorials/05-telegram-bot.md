@@ -14,6 +14,7 @@
 ## Step 1: 환경 변수 설정
 
 `.env` 에 추가:
+
 ```bash
 TELEGRAM_BOT_TOKEN=1234567890:ABC-def...
 TELEGRAM_OWNER_ID=123456789    # 자신의 Telegram 사용자 ID
@@ -135,6 +136,7 @@ return {
 ```
 
 이렇게 하면 어댑터에서:
+
 ```ts
 telegram.onMessage(async (msg) => {
   const route = await platform.router.route(msg);
@@ -170,7 +172,7 @@ platform.router.addRule({
   id: 'dev-team-group',
   conditions: {
     channelType: ['telegram'],
-    conversationIds: ['-100...'],  // 그룹 chat_id
+    conversationIds: ['-100...'], // 그룹 chat_id
   },
   target: { agentId: 'dev-helper' },
   priority: 10,

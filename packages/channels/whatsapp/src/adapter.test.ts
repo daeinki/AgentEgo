@@ -1,11 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { StandardMessage } from '@agent-platform/core';
 import { WhatsAppAdapter } from './adapter.js';
-import type {
-  WhatsAppClient,
-  WhatsAppMessage,
-  WhatsAppSendParams,
-} from './whatsapp-client.js';
+import type { WhatsAppClient, WhatsAppMessage, WhatsAppSendParams } from './whatsapp-client.js';
 
 class MockWhatsAppClient implements WhatsAppClient {
   private onMessage?: (m: WhatsAppMessage) => void;
@@ -85,9 +81,7 @@ describe('WhatsAppAdapter', () => {
     adapter.onMessage((m) => {
       got = m;
     });
-    client.emit(
-      makeRaw({ isGroup: true, chatId: '123-1700000000@g.us' }),
-    );
+    client.emit(makeRaw({ isGroup: true, chatId: '123-1700000000@g.us' }));
     expect(got!.sender.isOwner).toBe(false);
     expect(got!.conversation.type).toBe('group');
   });

@@ -34,8 +34,7 @@ export const strings = {
   chat: {
     title: 'Chat',
     description: 'Direct gateway chat session for quick interventions.',
-    placeholder:
-      'Message (↵ to send, Shift+↵ for line breaks, paste images)',
+    placeholder: 'Message (↵ to send, Shift+↵ for line breaks, paste images)',
     newSession: 'New session',
     send: 'Send',
   },

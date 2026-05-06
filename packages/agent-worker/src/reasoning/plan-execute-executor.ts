@@ -1,4 +1,14 @@
-import type { Contracts, GoalUpdate, Plan, PlanStep, ReasoningMode, ReasoningState, ReasoningStep, SessionPolicy, StandardMessage } from '@agent-platform/core';
+import type {
+  Contracts,
+  GoalUpdate,
+  Plan,
+  PlanStep,
+  ReasoningMode,
+  ReasoningState,
+  ReasoningStep,
+  SessionPolicy,
+  StandardMessage,
+} from '@agent-platform/core';
 import { DEFAULT_REASONING_BUDGET, generateId, nowMs } from '@agent-platform/core';
 import type { CompletionMessage, ModelAdapter, ModelTraceContext } from '../model/types.js';
 import type { StepMatcher } from './step-matcher.js';
@@ -210,7 +220,14 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
           summary: `replan output failed JSON validation → downgrading to ReAct`,
           payload: { replanCount, reason: 'plan_validation_error' },
         });
-        yield* this.downgradeToReact(ctx, plan, outcome.failure, replanCount, state, 'plan_validation_error');
+        yield* this.downgradeToReact(
+          ctx,
+          plan,
+          outcome.failure,
+          replanCount,
+          state,
+          'plan_validation_error',
+        );
         return;
       }
 
@@ -600,12 +617,17 @@ export class PlanExecuteExecutor implements Contracts.Reasoner {
 
   // ─── Synthesis ────────────────────────────────────────────────────────────
 
-  private async *synthesizeFinal(ctx: Contracts.ReasoningContext, plan: Plan): AsyncGenerator<Contracts.ReasoningEvent, string> {
+  private async *synthesizeFinal(
+    ctx: Contracts.ReasoningContext,
+    plan: Plan,
+  ): AsyncGenerator<Contracts.ReasoningEvent, string> {
     const summary = plan.steps
-      .map((s) => `- [${s.status}] ${s.goal}${s.observation ? `: ${summarizeObservation(s.observation)}` : ''}`)
+      .map(
+        (s) =>
+          `- [${s.status}] ${s.goal}${s.observation ? `: ${summarizeObservation(s.observation)}` : ''}`,
+      )
       .join('\n');
-    const prompt =
-      `${ctx.systemPrompt}\n\n## 실행 결과\n${summary}\n\n위 실행 결과를 바탕으로 사용자에게 최종 답변을 한국어로 간결히 제공하라.`;
+    const prompt = `${ctx.systemPrompt}\n\n## 실행 결과\n${summary}\n\n위 실행 결과를 바탕으로 사용자에게 최종 답변을 한국어로 간결히 제공하라.`;
     const messages: CompletionMessage[] = [
       ...ctx.priorMessages.map(copyMessage),
       { role: 'user', content: extractText(ctx.userMessage) },
@@ -638,9 +660,7 @@ function buildPlannerPrompt(ctx: Contracts.ReasoningContext): {
   systemPrompt: string;
   messages: CompletionMessage[];
 } {
-  const toolList = ctx.availableTools
-    .map((t) => `- ${t.name}: ${t.description}`)
-    .join('\n');
+  const toolList = ctx.availableTools.map((t) => `- ${t.name}: ${t.description}`).join('\n');
   const systemPrompt =
     `${ctx.systemPrompt}\n\n## 계획 수립 지시\n` +
     `아래 사용자 요청을 수행하기 위한 단계별 계획을 JSON 으로만 응답하라.\n` +
@@ -690,9 +710,7 @@ function buildGoalUpdatePrompt(
   const cognition = ctx.egoCognition;
   const situationBlock = cognition
     ? `\n\n상황 요약: ${cognition.situationSummary}\n` +
-      (cognition.opportunities.length > 0
-        ? `기회: ${cognition.opportunities.join(' / ')}\n`
-        : '') +
+      (cognition.opportunities.length > 0 ? `기회: ${cognition.opportunities.join(' / ')}\n` : '') +
       (cognition.risks.length > 0 ? `위험: ${cognition.risks.join(' / ')}\n` : '')
     : '';
   const systemPrompt =
@@ -778,7 +796,10 @@ export function computeLevels(plan: Plan): PlanStep[][] {
 // ─── Plan parsing/validation ───────────────────────────────────────────────
 
 export function parsePlan(text: string): { ok: true; value: Plan } | { ok: false; error: string } {
-  const stripped = text.replace(/^\s*```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  const stripped = text
+    .replace(/^\s*```(?:json)?\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
   let parsed: unknown;
   try {
     parsed = JSON.parse(stripped);
@@ -788,14 +809,23 @@ export function parsePlan(text: string): { ok: true; value: Plan } | { ok: false
   if (!parsed || typeof parsed !== 'object') return { ok: false, error: 'not an object' };
   const obj = parsed as { rationale?: unknown; steps?: unknown };
   if (typeof obj.rationale !== 'string') return { ok: false, error: 'missing rationale' };
-  if (!Array.isArray(obj.steps) || obj.steps.length === 0) return { ok: false, error: 'missing steps' };
+  if (!Array.isArray(obj.steps) || obj.steps.length === 0)
+    return { ok: false, error: 'missing steps' };
 
   const steps: PlanStep[] = [];
   for (const raw of obj.steps as unknown[]) {
     if (!raw || typeof raw !== 'object') return { ok: false, error: 'step is not object' };
-    const s = raw as { id?: unknown; goal?: unknown; tool?: unknown; args?: unknown; dependsOn?: unknown };
-    if (typeof s.id !== 'string' || s.id.length === 0) return { ok: false, error: 'step.id missing' };
-    if (typeof s.goal !== 'string' || s.goal.length === 0) return { ok: false, error: 'step.goal missing' };
+    const s = raw as {
+      id?: unknown;
+      goal?: unknown;
+      tool?: unknown;
+      args?: unknown;
+      dependsOn?: unknown;
+    };
+    if (typeof s.id !== 'string' || s.id.length === 0)
+      return { ok: false, error: 'step.id missing' };
+    if (typeof s.goal !== 'string' || s.goal.length === 0)
+      return { ok: false, error: 'step.goal missing' };
     const dependsOn = Array.isArray(s.dependsOn)
       ? (s.dependsOn as unknown[]).filter((x): x is string => typeof x === 'string')
       : [];

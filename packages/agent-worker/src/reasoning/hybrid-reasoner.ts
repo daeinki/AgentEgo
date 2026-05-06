@@ -1,6 +1,10 @@
 import type { Contracts, ReasoningMode, SessionPolicy } from '@agent-platform/core';
 import type { ModelAdapter } from '../model/types.js';
-import { ReactExecutor, type ReactExecutorConfig, type ReactExecutorDeps } from './react-executor.js';
+import {
+  ReactExecutor,
+  type ReactExecutorConfig,
+  type ReactExecutorDeps,
+} from './react-executor.js';
 import { PlanExecuteExecutor, type PlanExecuteConfig } from './plan-execute-executor.js';
 import { DefaultComplexityRouter } from './complexity-router.js';
 import type { StepMatcher } from './step-matcher.js';

@@ -32,9 +32,7 @@ describe('SqliteTraceLog', () => {
       payload: { textPreview: 'hi' },
     });
 
-    const rows = log._db
-      .prepare('SELECT * FROM trace_events WHERE trace_id = ?')
-      .all('trc-1');
+    const rows = log._db.prepare('SELECT * FROM trace_events WHERE trace_id = ?').all('trc-1');
     expect(rows).toHaveLength(1);
     const row = rows[0] as Record<string, unknown>;
     expect(row['block']).toBe('G3');
@@ -45,19 +43,14 @@ describe('SqliteTraceLog', () => {
   });
 
   it('span() emits enter + exit rows around a successful fn', async () => {
-    const result = await log.span<number>(
-      { traceId: 'trc-2', block: 'P1' },
-      async () => {
-        await new Promise((r) => setTimeout(r, 5));
-        return 42;
-      },
-    );
+    const result = await log.span<number>({ traceId: 'trc-2', block: 'P1' }, async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      return 42;
+    });
     expect(result).toBe(42);
 
     const rows = log._db
-      .prepare(
-        'SELECT event, duration_ms FROM trace_events WHERE trace_id = ? ORDER BY id',
-      )
+      .prepare('SELECT event, duration_ms FROM trace_events WHERE trace_id = ? ORDER BY id')
       .all('trc-2') as { event: string; duration_ms: number | null }[];
     expect(rows.map((r) => r.event)).toEqual(['enter', 'exit']);
     expect(rows[0]!.duration_ms).toBe(null);
@@ -73,9 +66,7 @@ describe('SqliteTraceLog', () => {
     ).rejects.toThrow('boom');
 
     const rows = log._db
-      .prepare(
-        'SELECT event, error FROM trace_events WHERE trace_id = ? ORDER BY id',
-      )
+      .prepare('SELECT event, error FROM trace_events WHERE trace_id = ? ORDER BY id')
       .all('trc-3') as { event: string; error: string | null }[];
     expect(rows.map((r) => r.event)).toEqual(['enter', 'error']);
     expect(rows[1]!.error).toBe('boom');
@@ -101,9 +92,9 @@ describe('SqliteTraceLog', () => {
     const deleted = log.pruneOlderThan(14);
     expect(deleted).toBe(1);
 
-    const remaining = log._db
-      .prepare('SELECT trace_id FROM trace_events ORDER BY id')
-      .all() as { trace_id: string }[];
+    const remaining = log._db.prepare('SELECT trace_id FROM trace_events ORDER BY id').all() as {
+      trace_id: string;
+    }[];
     expect(remaining.map((r) => r.trace_id)).toEqual(['t-new']);
   });
 
@@ -166,14 +157,16 @@ describe('SqliteTraceLog', () => {
         error TEXT
       );
     `);
-    legacy.prepare(
-      'INSERT INTO trace_events (trace_id, block, event, timestamp) VALUES (?, ?, ?, ?)',
-    ).run('legacy-1', 'G3', 'enter', 100);
+    legacy
+      .prepare('INSERT INTO trace_events (trace_id, block, event, timestamp) VALUES (?, ?, ?, ?)')
+      .run('legacy-1', 'G3', 'enter', 100);
     legacy.close();
 
     log = new SqliteTraceLog({ storePath: dbPath });
     // The migration must have added the column without dropping the legacy row.
-    const cols = log._db.prepare('PRAGMA table_info(trace_events)').all() as Array<{ name: string }>;
+    const cols = log._db.prepare('PRAGMA table_info(trace_events)').all() as Array<{
+      name: string;
+    }>;
     expect(cols.some((c) => c.name === 'summary')).toBe(true);
     const row = log._db
       .prepare('SELECT trace_id, summary FROM trace_events WHERE trace_id = ?')

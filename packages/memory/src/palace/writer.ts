@@ -21,8 +21,7 @@ export interface WingAppendParams {
 export async function appendWingEntry(params: WingAppendParams): Promise<void> {
   await mkdir(dirname(params.filePath), { recursive: true });
   const heading = params.heading ? ` — ${params.heading}` : '';
-  const block =
-    `\n## ${params.timestampIso}${heading}\n\n${params.content.trimEnd()}\n`;
+  const block = `\n## ${params.timestampIso}${heading}\n\n${params.content.trimEnd()}\n`;
   await appendFile(params.filePath, block, 'utf-8');
 }
 

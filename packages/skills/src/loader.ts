@@ -24,9 +24,7 @@ export function assertSafeEntryPoint(installDir: string, entryPoint: string): st
   const installPrefix = installDir.endsWith(sep) ? installDir : installDir + sep;
   const resolved = resolve(installDir, entryPoint);
   if (resolved !== installDir && !resolved.startsWith(installPrefix)) {
-    throw new Error(
-      `skill entryPoint escapes installDir: ${entryPoint} -> ${resolved}`,
-    );
+    throw new Error(`skill entryPoint escapes installDir: ${entryPoint} -> ${resolved}`);
   }
   return resolved;
 }
@@ -113,10 +111,7 @@ export async function loadSkillTools(
   return tools.map((raw) => normalizeToolHandler(raw, manifest.id));
 }
 
-function normalizeToolHandler(
-  raw: RawLoadedSkillTool,
-  skillId: string,
-): LoadedSkillTool {
+function normalizeToolHandler(raw: RawLoadedSkillTool, skillId: string): LoadedSkillTool {
   const handler = typeof raw.execute === 'function' ? raw.execute : raw.call;
   if (typeof handler !== 'function') {
     throw new Error(

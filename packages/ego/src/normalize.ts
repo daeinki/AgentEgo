@@ -43,7 +43,10 @@ export function classifyIntent(signal: EgoSignal): { primary: IntentType; confid
   if (/^(?:안녕|ㅎㅇ|반가워)|^(?:hi|hello|hey)\b/i.test(text)) {
     return { primary: 'greeting', confidence: 0.9 };
   }
-  if (/[?？]$/.test(text) || /^(?:뭐|어떻게|왜|언제|어디|누가)|^(?:what|how|why|when|where|who)\b/i.test(text)) {
+  if (
+    /[?？]$/.test(text) ||
+    /^(?:뭐|어떻게|왜|언제|어디|누가)|^(?:what|how|why|when|where|who)\b/i.test(text)
+  ) {
     return { primary: 'question', confidence: 0.75 };
   }
   if (/(?:틀렸|아니야|잘못|수정|다시)|\b(?:wrong|incorrect|fix that)\b/i.test(text)) {

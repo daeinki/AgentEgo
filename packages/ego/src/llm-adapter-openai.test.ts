@@ -63,14 +63,37 @@ describe('OpenAiEgoLlmAdapter', () => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           create: async (req: any) => {
             captured.push(req);
-            return { choices: [{ message: { content: '{"perception":{"requestType":"direct_answer","patterns":[],"isFollowUp":false,"requiresToolUse":false,"estimatedComplexity":"low"},"cognition":{"relevantMemoryIndices":[],"relatedGoalId":null,"situationSummary":"s","opportunities":[],"risks":[],"egoRelevance":0.5},"judgment":{"action":"passthrough","confidence":0.8,"reason":"r"}}' } }] };
+            return {
+              choices: [
+                {
+                  message: {
+                    content:
+                      '{"perception":{"requestType":"direct_answer","patterns":[],"isFollowUp":false,"requiresToolUse":false,"estimatedComplexity":"low"},"cognition":{"relevantMemoryIndices":[],"relatedGoalId":null,"situationSummary":"s","opportunities":[],"risks":[],"egoRelevance":0.5},"judgment":{"action":"passthrough","confidence":0.8,"reason":"r"}}',
+                  },
+                },
+              ],
+            };
           },
         },
       },
     };
     await adapter.think({
       systemPrompt: 'sys',
-      context: { signal: { rawText: 'hi', traceId: 't', source: { channel: 'webchat', senderId: 's', timestampMs: 0 }, intent: { primary: 'conversation' }, urgency: 'normal', complexity: 'trivial', sensitivity: 'normal', entities: [] } as never, recentConversation: [], relevantMemories: [], activeGoals: [] },
+      context: {
+        signal: {
+          rawText: 'hi',
+          traceId: 't',
+          source: { channel: 'webchat', senderId: 's', timestampMs: 0 },
+          intent: { primary: 'conversation' },
+          urgency: 'normal',
+          complexity: 'trivial',
+          sensitivity: 'normal',
+          entities: [],
+        } as never,
+        recentConversation: [],
+        relevantMemories: [],
+        activeGoals: [],
+      },
       responseFormat: { type: 'json_object' },
     });
     expect(captured).toHaveLength(1);
@@ -93,14 +116,37 @@ describe('OpenAiEgoLlmAdapter', () => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           create: async (req: any) => {
             captured.push(req);
-            return { choices: [{ message: { content: '{"perception":{"requestType":"direct_answer","patterns":[],"isFollowUp":false,"requiresToolUse":false,"estimatedComplexity":"low"},"cognition":{"relevantMemoryIndices":[],"relatedGoalId":null,"situationSummary":"s","opportunities":[],"risks":[],"egoRelevance":0.5},"judgment":{"action":"passthrough","confidence":0.8,"reason":"r"}}' } }] };
+            return {
+              choices: [
+                {
+                  message: {
+                    content:
+                      '{"perception":{"requestType":"direct_answer","patterns":[],"isFollowUp":false,"requiresToolUse":false,"estimatedComplexity":"low"},"cognition":{"relevantMemoryIndices":[],"relatedGoalId":null,"situationSummary":"s","opportunities":[],"risks":[],"egoRelevance":0.5},"judgment":{"action":"passthrough","confidence":0.8,"reason":"r"}}',
+                  },
+                },
+              ],
+            };
           },
         },
       },
     };
     await adapter.think({
       systemPrompt: 'sys',
-      context: { signal: { rawText: 'hi', traceId: 't', source: { channel: 'webchat', senderId: 's', timestampMs: 0 }, intent: { primary: 'conversation' }, urgency: 'normal', complexity: 'trivial', sensitivity: 'normal', entities: [] } as never, recentConversation: [], relevantMemories: [], activeGoals: [] },
+      context: {
+        signal: {
+          rawText: 'hi',
+          traceId: 't',
+          source: { channel: 'webchat', senderId: 's', timestampMs: 0 },
+          intent: { primary: 'conversation' },
+          urgency: 'normal',
+          complexity: 'trivial',
+          sensitivity: 'normal',
+          entities: [],
+        } as never,
+        recentConversation: [],
+        relevantMemories: [],
+        activeGoals: [],
+      },
       responseFormat: { type: 'json_object' },
     });
     const body = captured[0]!;

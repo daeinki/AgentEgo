@@ -83,10 +83,7 @@ export class LaunchdAdapter implements ServiceAdapter {
 
 export function buildPlist(opts: InstallOptions): string {
   const envEntries = Object.entries(opts.env)
-    .map(
-      ([k, v]) =>
-        `    <key>${escapeXml(k)}</key>\n    <string>${escapeXml(v)}</string>`,
-    )
+    .map(([k, v]) => `    <key>${escapeXml(k)}</key>\n    <string>${escapeXml(v)}</string>`)
     .join('\n');
   const argsXml = [opts.nodeBinary, opts.entrypoint, ...opts.entrypointArgs]
     .map((a) => `    <string>${escapeXml(a)}</string>`)
@@ -127,15 +124,7 @@ ${envEntries}
 
 function escapeXml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
-    c === '&'
-      ? '&amp;'
-      : c === '<'
-        ? '&lt;'
-        : c === '>'
-          ? '&gt;'
-          : c === '"'
-            ? '&quot;'
-            : '&apos;',
+    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&apos;',
   );
 }
 

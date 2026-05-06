@@ -65,16 +65,14 @@ describe('createEgoLlmAdapter', () => {
   });
 
   it('throws on unknown provider', async () => {
-    await expect(
-      createEgoLlmAdapter({ ...openaiCfg, provider: 'xai' as never }),
-    ).rejects.toThrow(/Unsupported ego.llm.provider: 'xai'/);
+    await expect(createEgoLlmAdapter({ ...openaiCfg, provider: 'xai' as never })).rejects.toThrow(
+      /Unsupported ego.llm.provider: 'xai'/,
+    );
   });
 
   it('throws when primary apiKey references an unset env var', async () => {
     delete process.env['_FACTORY_TEST_OPENAI'];
-    await expect(createEgoLlmAdapter(openaiCfg)).rejects.toThrow(
-      /_FACTORY_TEST_OPENAI/,
-    );
+    await expect(createEgoLlmAdapter(openaiCfg)).rejects.toThrow(/_FACTORY_TEST_OPENAI/);
   });
 
   it('throws when fallback apiKey references an unset env var', async () => {

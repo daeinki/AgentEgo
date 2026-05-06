@@ -21,9 +21,7 @@ const SUPPORTED_PROVIDERS: ReadonlySet<EgoLlmProvider> = new Set(['anthropic', '
  * Callers (e.g. gateway start) should treat a throw as a startup blocker
  * and surface a diagnostic message to the user.
  */
-export async function createEgoLlmAdapter(
-  config: EgoLlmConfig,
-): Promise<Contracts.EgoLlmAdapter> {
+export async function createEgoLlmAdapter(config: EgoLlmConfig): Promise<Contracts.EgoLlmAdapter> {
   assertProviderSupported(config.provider);
   assertApiKeyAvailable(config.provider, config.apiKey);
   if (config.fallback) {
@@ -67,9 +65,7 @@ async function instantiate(
 function assertProviderSupported(provider: string): void {
   if (!SUPPORTED_PROVIDERS.has(provider as EgoLlmProvider)) {
     const supported = [...SUPPORTED_PROVIDERS].join(' | ');
-    throw new Error(
-      `Unsupported ego.llm.provider: '${provider}' (supported: ${supported})`,
-    );
+    throw new Error(`Unsupported ego.llm.provider: '${provider}' (supported: ${supported})`);
   }
 }
 

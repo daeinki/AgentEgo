@@ -43,7 +43,9 @@ export class HttpDiscordClient implements DiscordClient {
     );
     if (!response.ok) {
       const text = await response.text().catch(() => '');
-      throw new Error(`discord createMessage failed: HTTP ${response.status} ${text.slice(0, 200)}`);
+      throw new Error(
+        `discord createMessage failed: HTTP ${response.status} ${text.slice(0, 200)}`,
+      );
     }
     return (await response.json()) as DiscordMessage;
   }

@@ -2,7 +2,6 @@
 
 차세대 AI 에이전트 플랫폼 — **OpenClaw 교훈을 반영한 분리 가능한 Control Panel + 자율 판단 EGO 레이어 + Palace 구조 장기 기억**.
 
-
 ## 핵심 기능
 
 - **EGO 레이어** — 메시지 버스와 Control Panel 사이에서 자율 판단. `passthrough`/`enrich`/`redirect`/`direct_response` 4가지 경로. 규칙 기반 빠른 경로(~16ms) + LLM 기반 깊은 경로(~2s).
@@ -72,12 +71,12 @@ is missing` 같은 오류가 나면 `.npmrc` 가 적용된 상태에서 `pnpm in
 
 Gateway 는 턴마다 파이프라인 블록(G3 · P1 · E1 · W1 · R1/R2/R3 · M1 · S1 · K1/K2 등) 이벤트를 `<stateDir>/trace/traces.db` 에 기록한다. `agent trace` 서브커맨드로 조회한다.
 
-| 서브커맨드 | 용도 | 주요 옵션 |
-|---|---|---|
-| `trace list` | 최근 trace 최신순 나열 | `-s, --session <id>` · `-n, --limit <n>` (기본 20) |
-| `trace show <traceId>` | 특정 trace 의 블록 타임라인 | `--format text\|json` (기본 text) |
-| `trace last` | 가장 최근 trace 1건 | `-s, --session <id>` · `--format text\|json` |
-| `trace export <traceId>` | trace 를 JSON/NDJSON 덤프 (공유·분석용) | `--format json\|ndjson` (기본 json) |
+| 서브커맨드               | 용도                                    | 주요 옵션                                          |
+| ------------------------ | --------------------------------------- | -------------------------------------------------- |
+| `trace list`             | 최근 trace 최신순 나열                  | `-s, --session <id>` · `-n, --limit <n>` (기본 20) |
+| `trace show <traceId>`   | 특정 trace 의 블록 타임라인             | `--format text\|json` (기본 text)                  |
+| `trace last`             | 가장 최근 trace 1건                     | `-s, --session <id>` · `--format text\|json`       |
+| `trace export <traceId>` | trace 를 JSON/NDJSON 덤프 (공유·분석용) | `--format json\|ndjson` (기본 json)                |
 
 ```bash
 # 최근 5건 목록
@@ -99,10 +98,10 @@ pnpm --filter @agent-platform/cli dev -- trace export trc-01JA... --format ndjso
 
 ### trace 기록 끄기·유지기간
 
-| 환경 변수 | 기본값 | 의미 |
-|---|---|---|
-| `AGENT_TRACE=0` | (on) | 턴 trace 기록 비활성화 (`NoopTraceLogger` 로 교체) |
-| `AGENT_TRACE_RETENTION_DAYS` | `14` | gateway 부팅 시 해당 일수 이전 row prune |
+| 환경 변수                    | 기본값 | 의미                                               |
+| ---------------------------- | ------ | -------------------------------------------------- |
+| `AGENT_TRACE=0`              | (on)   | 턴 trace 기록 비활성화 (`NoopTraceLogger` 로 교체) |
+| `AGENT_TRACE_RETENTION_DAYS` | `14`   | gateway 부팅 시 해당 일수 이전 row prune           |
 
 자세한 block naming convention (G3/P1/E1/W1/R1/R2/R3/M1/S1/K1/K2 등) 과 각 블록의 입력·처리·출력 규약은 설계 문서 [`visualize_architecture.md`](./packages/skills/builtin/architecture-lookup/visualize_architecture.md) §13 "TraceLogger" 참조. 런타임에 에이전트가 같은 문서를 참조할 수 있도록 `architecture-lookup` 내장 스킬이 번들되어 있으며 (자동 시드), `architecture.lookup` / `architecture.search` 두 툴로 섹션 단위 조회 가능.
 
@@ -120,27 +119,27 @@ pnpm --filter @agent-platform/cli dev -- trace export trc-01JA... --format ndjso
 
 ## 패키지 구조 (18개)
 
-| 패키지 | 설명 |
-|--------|------|
-| [`@agent-platform/core`](packages/core) | 공유 타입·TypeBox 스키마·contracts. 서브패스 export `@agent-platform/core/phase-format` 는 TUI/webapp 이 동일 PhaseLine 을 렌더하도록 공유하는 단일 소스. |
-| [`@agent-platform/control-plane`](packages/control-plane) | SessionManager + RuleRouter + ApiGateway (HTTP+WS). `DeviceAuthStore` (ed25519 enroll/assert + HMAC 세션 토큰) + `/device/*` · `/ui/*` 라우트. |
-| [`@agent-platform/ego`](packages/ego) | S1~S7 EGO 파이프라인 + GoalStore + PersonaManager + AuditLog |
-| [`@agent-platform/memory`](packages/memory) | PalaceMemorySystem + FTS5 + cosine + LlmCompactor |
-| [`@agent-platform/agent-worker`](packages/agent-worker) | AgentRunner + PromptBuilder + Sandbox + built-in tools |
-| [`@agent-platform/observability`](packages/observability) | OTel tracer + metrics + OTLP exporter |
-| [`@agent-platform/skills`](packages/skills) | LocalSkillRegistry + skill 로더 + tool 등록기 |
-| [`@agent-platform/message-bus`](packages/message-bus) | InProcessBus + RedisStreamsBus |
-| [`@agent-platform/workflow`](packages/workflow) | Workflow DSL + 인터프리터 |
-| [`@agent-platform/device-node`](packages/device-node) | 디바이스 WS 프로토콜 (페어링/하트비트/푸시) |
-| [`@agent-platform/gateway-cli`](packages/gateway-cli) | JSON-RPC 2.0 over WS. `chat.*`, `sessions.*`, `overview.status`, `channels.list/status`, `instances.list`, `cron.list/runNow`, `sessions.events`. TUI · webapp 이 공유. |
-| [`@agent-platform/tui`](packages/tui) | Ink + React 터미널 대시보드. |
-| [`@agent-platform/webapp`](packages/webapp) | Vite + Lit 3 브라우저 SPA. 6개 뷰(Chat/Overview/Channels/Instances/Sessions/Cron) + 공유 `<phase-line>` 컴포넌트 + ed25519 device-identity. |
-| [`@agent-platform/cli`](packages/cli) | CLI 명령어 + 런타임 플랫폼 와이어링 |
-| [`@agent-platform/channel-webchat`](packages/channels/webchat) | 브라우저 WebSocket 어댑터 (채널 계약용 — 대시보드 webapp 과 별개) |
-| [`@agent-platform/channel-telegram`](packages/channels/telegram) | Telegram Bot API 어댑터 |
-| [`@agent-platform/channel-slack`](packages/channels/slack) | Slack Events API + Web API |
-| [`@agent-platform/channel-discord`](packages/channels/discord) | Discord REST + Gateway WS |
-| [`@agent-platform/channel-whatsapp`](packages/channels/whatsapp) | baileys 기반 (옵셔널 peer) |
+| 패키지                                                           | 설명                                                                                                                                                                    |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@agent-platform/core`](packages/core)                          | 공유 타입·TypeBox 스키마·contracts. 서브패스 export `@agent-platform/core/phase-format` 는 TUI/webapp 이 동일 PhaseLine 을 렌더하도록 공유하는 단일 소스.               |
+| [`@agent-platform/control-plane`](packages/control-plane)        | SessionManager + RuleRouter + ApiGateway (HTTP+WS). `DeviceAuthStore` (ed25519 enroll/assert + HMAC 세션 토큰) + `/device/*` · `/ui/*` 라우트.                          |
+| [`@agent-platform/ego`](packages/ego)                            | S1~S7 EGO 파이프라인 + GoalStore + PersonaManager + AuditLog                                                                                                            |
+| [`@agent-platform/memory`](packages/memory)                      | PalaceMemorySystem + FTS5 + cosine + LlmCompactor                                                                                                                       |
+| [`@agent-platform/agent-worker`](packages/agent-worker)          | AgentRunner + PromptBuilder + Sandbox + built-in tools                                                                                                                  |
+| [`@agent-platform/observability`](packages/observability)        | OTel tracer + metrics + OTLP exporter                                                                                                                                   |
+| [`@agent-platform/skills`](packages/skills)                      | LocalSkillRegistry + skill 로더 + tool 등록기                                                                                                                           |
+| [`@agent-platform/message-bus`](packages/message-bus)            | InProcessBus + RedisStreamsBus                                                                                                                                          |
+| [`@agent-platform/workflow`](packages/workflow)                  | Workflow DSL + 인터프리터                                                                                                                                               |
+| [`@agent-platform/device-node`](packages/device-node)            | 디바이스 WS 프로토콜 (페어링/하트비트/푸시)                                                                                                                             |
+| [`@agent-platform/gateway-cli`](packages/gateway-cli)            | JSON-RPC 2.0 over WS. `chat.*`, `sessions.*`, `overview.status`, `channels.list/status`, `instances.list`, `cron.list/runNow`, `sessions.events`. TUI · webapp 이 공유. |
+| [`@agent-platform/tui`](packages/tui)                            | Ink + React 터미널 대시보드.                                                                                                                                            |
+| [`@agent-platform/webapp`](packages/webapp)                      | Vite + Lit 3 브라우저 SPA. 6개 뷰(Chat/Overview/Channels/Instances/Sessions/Cron) + 공유 `<phase-line>` 컴포넌트 + ed25519 device-identity.                             |
+| [`@agent-platform/cli`](packages/cli)                            | CLI 명령어 + 런타임 플랫폼 와이어링                                                                                                                                     |
+| [`@agent-platform/channel-webchat`](packages/channels/webchat)   | 브라우저 WebSocket 어댑터 (채널 계약용 — 대시보드 webapp 과 별개)                                                                                                       |
+| [`@agent-platform/channel-telegram`](packages/channels/telegram) | Telegram Bot API 어댑터                                                                                                                                                 |
+| [`@agent-platform/channel-slack`](packages/channels/slack)       | Slack Events API + Web API                                                                                                                                              |
+| [`@agent-platform/channel-discord`](packages/channels/discord)   | Discord REST + Gateway WS                                                                                                                                               |
+| [`@agent-platform/channel-whatsapp`](packages/channels/whatsapp) | baileys 기반 (옵셔널 peer)                                                                                                                                              |
 
 ## 빌드·테스트 상태
 

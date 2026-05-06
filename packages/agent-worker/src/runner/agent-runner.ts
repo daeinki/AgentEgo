@@ -174,8 +174,7 @@ export class AgentRunner {
 
     // U10 Phase 4: prefer the live registry snapshot when wired, so tools
     // registered since the previous turn (e.g. via skill.create) are visible.
-    const availableTools =
-      this.deps.toolRegistry?.descriptors() ?? this.deps.tools ?? [];
+    const availableTools = this.deps.toolRegistry?.descriptors() ?? this.deps.tools ?? [];
 
     const ctx: Contracts.ReasoningContext = {
       sessionId,
@@ -475,12 +474,14 @@ function extractEgoGoalUpdates(msg: StandardMessage): GoalUpdate[] {
   return out;
 }
 
-function extractEgoEnrichment(msg: StandardMessage): {
-  addContext?: string;
-  addInstructions?: string;
-  memories?: string[];
-  suggestedTools?: string[];
-} | undefined {
+function extractEgoEnrichment(msg: StandardMessage):
+  | {
+      addContext?: string;
+      addInstructions?: string;
+      memories?: string[];
+      suggestedTools?: string[];
+    }
+  | undefined {
   const meta = msg.channel.metadata as Record<string, unknown> | undefined;
   const raw = meta?.['_egoEnrichment'];
   if (!raw || typeof raw !== 'object') return undefined;

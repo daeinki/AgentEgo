@@ -77,9 +77,7 @@ export class OpenAIAdapter implements ModelAdapter {
     try {
       stream = await this.client.chat.completions.create({
         model: this.model,
-        ...(usesCompletionTokens
-          ? { max_completion_tokens: maxTok }
-          : { max_tokens: maxTok }),
+        ...(usesCompletionTokens ? { max_completion_tokens: maxTok } : { max_tokens: maxTok }),
         ...(supportsTemperature ? { temperature: request.temperature ?? 0.7 } : {}),
         messages,
         ...(tools && tools.length > 0 ? { tools } : {}),
@@ -141,8 +139,7 @@ export class OpenAIAdapter implements ModelAdapter {
                 emitFirstTokenIfNeeded();
                 toolCallIndexToId.set(idx, tc.id);
                 const wireName = tc.function?.name ?? '';
-                const canonicalName =
-                  nameMap?.wireToCanonical.get(wireName) ?? wireName;
+                const canonicalName = nameMap?.wireToCanonical.get(wireName) ?? wireName;
                 yield {
                   type: 'tool_call_start',
                   id: tc.id,
@@ -240,11 +237,7 @@ export class OpenAIAdapter implements ModelAdapter {
     return out;
   }
 
-
-
-  private toOpenAITools(
-    tools: ToolDefinition[],
-  ): OpenAI.Chat.Completions.ChatCompletionTool[] {
+  private toOpenAITools(tools: ToolDefinition[]): OpenAI.Chat.Completions.ChatCompletionTool[] {
     return tools.map((t) => ({
       type: 'function',
       function: {
@@ -256,9 +249,7 @@ export class OpenAIAdapter implements ModelAdapter {
   }
 }
 
-function convertMessage(
-  m: CompletionMessage,
-): OpenAI.Chat.Completions.ChatCompletionMessageParam {
+function convertMessage(m: CompletionMessage): OpenAI.Chat.Completions.ChatCompletionMessageParam {
   if (m.role === 'tool') {
     return {
       role: 'tool',

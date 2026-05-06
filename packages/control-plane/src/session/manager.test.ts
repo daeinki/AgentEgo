@@ -72,8 +72,16 @@ describe('ControlPlaneSessionManager', () => {
   });
 
   it('sendToSession emits a system event on the target session', async () => {
-    const src = await mgr.createSession({ agentId: 'a', channelType: 'webchat', conversationId: 'c1' });
-    const dst = await mgr.createSession({ agentId: 'b', channelType: 'webchat', conversationId: 'c1' });
+    const src = await mgr.createSession({
+      agentId: 'a',
+      channelType: 'webchat',
+      conversationId: 'c1',
+    });
+    const dst = await mgr.createSession({
+      agentId: 'b',
+      channelType: 'webchat',
+      conversationId: 'c1',
+    });
     await mgr.sendToSession(src.id, dst.id, 'hand-off summary');
     const events = store.getEvents(dst.id);
     expect(events).toHaveLength(1);
@@ -86,7 +94,11 @@ describe('ControlPlaneSessionManager', () => {
   });
 
   it('compactSession rolls older events into a system summary', async () => {
-    const s = await mgr.createSession({ agentId: 'a', channelType: 'webchat', conversationId: 'c2' });
+    const s = await mgr.createSession({
+      agentId: 'a',
+      channelType: 'webchat',
+      conversationId: 'c2',
+    });
     for (let i = 0; i < 30; i += 1) {
       store.addEvent({
         sessionId: s.id,

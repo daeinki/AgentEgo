@@ -21,6 +21,8 @@
     "ioredis": ">=5.0.0"
   },
   "peerDependenciesMeta": {
-    "ioredis": { "optional": true }
+    "ioredis": {
+      "optional": true
+    }
   }
 }

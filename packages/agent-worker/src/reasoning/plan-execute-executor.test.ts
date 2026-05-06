@@ -48,7 +48,11 @@ const ownerPolicy: SessionPolicy = {
   resourceLimits: { maxCpuSeconds: 1, maxMemoryMb: 1, maxDiskMb: 1, networkEnabled: false },
 };
 
-const alwaysAllow: Contracts.CapabilityGuard = { async check() { return { allowed: true }; } };
+const alwaysAllow: Contracts.CapabilityGuard = {
+  async check() {
+    return { allowed: true };
+  },
+};
 
 const makeSandbox = (log: string[] = []): Contracts.ToolSandbox => ({
   async acquire() {
@@ -82,7 +86,9 @@ function makeCtx(overrides: Partial<Contracts.ReasoningContext> = {}): Contracts
   };
 }
 
-async function collect(iter: AsyncIterable<Contracts.ReasoningEvent>): Promise<Contracts.ReasoningEvent[]> {
+async function collect(
+  iter: AsyncIterable<Contracts.ReasoningEvent>,
+): Promise<Contracts.ReasoningEvent[]> {
   const out: Contracts.ReasoningEvent[] = [];
   for await (const ev of iter) out.push(ev);
   return out;
@@ -131,21 +137,26 @@ describe('PlanExecuteExecutor', () => {
     const model = new ScriptedAdapter([planJson, '최종 요약']);
     const execLog: string[] = [];
     const reactFallback = new ReactExecutor(model);
-    const ex = new PlanExecuteExecutor(
-      model,
-      reactFallback,
-      { capabilityGuard: alwaysAllow, toolSandbox: makeSandbox(execLog), sessionPolicy: ownerPolicy },
-    );
+    const ex = new PlanExecuteExecutor(model, reactFallback, {
+      capabilityGuard: alwaysAllow,
+      toolSandbox: makeSandbox(execLog),
+      sessionPolicy: ownerPolicy,
+    });
 
     const events = await collect(ex.run(makeCtx()));
     expect(execLog).toEqual(['list:{}', 'head:{}']);
 
-    const finals = events.filter((e) => e.kind === 'final') as { text: string; state: { terminationReason: string; plan?: unknown } }[];
+    const finals = events.filter((e) => e.kind === 'final') as {
+      text: string;
+      state: { terminationReason: string; plan?: unknown };
+    }[];
     expect(finals).toHaveLength(1);
     expect(finals[0]?.state.terminationReason).toBe('final_answer');
     expect(finals[0]?.text).toBe('최종 요약');
 
-    const progressKinds = events.filter((e) => e.kind === 'step_progress').map((e) => (e as { status: string }).status);
+    const progressKinds = events
+      .filter((e) => e.kind === 'step_progress')
+      .map((e) => (e as { status: string }).status);
     expect(progressKinds).toContain('running');
     expect(progressKinds).toContain('success');
   });
@@ -155,11 +166,11 @@ describe('PlanExecuteExecutor', () => {
     const fallbackAnswer = 'answered directly';
     const model = new ScriptedAdapter([badPlan, fallbackAnswer]);
     const reactFallback = new ReactExecutor(model);
-    const ex = new PlanExecuteExecutor(
-      model,
-      reactFallback,
-      { capabilityGuard: alwaysAllow, toolSandbox: makeSandbox(), sessionPolicy: ownerPolicy },
-    );
+    const ex = new PlanExecuteExecutor(model, reactFallback, {
+      capabilityGuard: alwaysAllow,
+      toolSandbox: makeSandbox(),
+      sessionPolicy: ownerPolicy,
+    });
 
     const events = await collect(ex.run(makeCtx()));
     const replan = events.find(
@@ -181,10 +192,16 @@ describe('PlanExecuteExecutor', () => {
 
     const failingSandbox: Contracts.ToolSandbox = {
       async acquire() {
-        return { id: 'sb', status: 'ready', startedAt: nowMs(), resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } };
+        return {
+          id: 'sb',
+          status: 'ready',
+          startedAt: nowMs(),
+          resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 },
+        };
       },
       async execute(_sb, name) {
-        if (name === 'broken') return { toolName: name, success: false, error: 'boom', durationMs: 0 };
+        if (name === 'broken')
+          return { toolName: name, success: false, error: 'boom', durationMs: 0 };
         return { toolName: name, success: true, output: 'ok', durationMs: 1 };
       },
       async release() {},
@@ -199,7 +216,9 @@ describe('PlanExecuteExecutor', () => {
 
     const events = await collect(ex.run(makeCtx()));
     const replanMarkers = events.filter(
-      (e) => e.kind === 'step' && (e as { step: { kind: string; content?: { reason?: string } } }).step.kind === 'replan',
+      (e) =>
+        e.kind === 'step' &&
+        (e as { step: { kind: string; content?: { reason?: string } } }).step.kind === 'replan',
     );
     expect(replanMarkers).toHaveLength(1);
     expect(
@@ -222,10 +241,16 @@ describe('PlanExecuteExecutor', () => {
 
     const sandbox: Contracts.ToolSandbox = {
       async acquire() {
-        return { id: 'sb', status: 'ready', startedAt: nowMs(), resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } };
+        return {
+          id: 'sb',
+          status: 'ready',
+          startedAt: nowMs(),
+          resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 },
+        };
       },
       async execute(_sb, name) {
-        if (name === 'flaky') return { toolName: name, success: false, error: 'boom', durationMs: 0 };
+        if (name === 'flaky')
+          return { toolName: name, success: false, error: 'boom', durationMs: 0 };
         if (name === 'works') return { toolName: name, success: true, output: 'ok', durationMs: 1 };
         return { toolName: name, success: false, error: 'unknown', durationMs: 0 };
       },
@@ -248,7 +273,10 @@ describe('PlanExecuteExecutor', () => {
 
     const final = events.find((e) => e.kind === 'final') as {
       text: string;
-      state: { terminationReason: string; plan?: { id: string; parentPlanId?: string; steps: { id: string; status: string }[] } };
+      state: {
+        terminationReason: string;
+        plan?: { id: string; parentPlanId?: string; steps: { id: string; status: string }[] };
+      };
     };
     expect(final.state.terminationReason).toBe('final_answer');
     expect(final.state.plan?.parentPlanId).toBeDefined();
@@ -272,7 +300,12 @@ describe('PlanExecuteExecutor', () => {
     // wall time ≥ 90ms; if parallel ≈ 30ms.
     const slowSandbox: Contracts.ToolSandbox = {
       async acquire() {
-        return { id: 'sb', status: 'ready', startedAt: nowMs(), resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } };
+        return {
+          id: 'sb',
+          status: 'ready',
+          startedAt: nowMs(),
+          resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 },
+        };
       },
       async execute(_sb, name) {
         await new Promise((r) => setTimeout(r, 30));
@@ -292,7 +325,9 @@ describe('PlanExecuteExecutor', () => {
     const events = await collect(ex.run(makeCtx()));
     const elapsed = performance.now() - start;
 
-    const final = events.find((e) => e.kind === 'final') as { state: { plan?: { steps: { status: string }[] } } };
+    const final = events.find((e) => e.kind === 'final') as {
+      state: { plan?: { steps: { status: string }[] } };
+    };
     expect(final.state.plan?.steps.every((s) => s.status === 'success')).toBe(true);
     // Generous bound: parallel ≈ 30ms, sequential ≈ 90ms+. Anything <70ms
     // means the steps overlapped.
@@ -312,7 +347,12 @@ describe('PlanExecuteExecutor', () => {
     const order: string[] = [];
     const sandbox: Contracts.ToolSandbox = {
       async acquire() {
-        return { id: 'sb', status: 'ready', startedAt: nowMs(), resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } };
+        return {
+          id: 'sb',
+          status: 'ready',
+          startedAt: nowMs(),
+          resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 },
+        };
       },
       async execute(_sb, name) {
         order.push(`start:${name}`);
@@ -355,13 +395,21 @@ describe('PlanExecuteExecutor', () => {
     const calls: string[] = [];
     const sandbox: Contracts.ToolSandbox = {
       async acquire() {
-        return { id: 'sb', status: 'ready', startedAt: nowMs(), resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } };
+        return {
+          id: 'sb',
+          status: 'ready',
+          startedAt: nowMs(),
+          resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 },
+        };
       },
       async execute(_sb, name) {
         calls.push(name);
-        if (name === 'cheap') return { toolName: name, success: true, output: 'cheap-ok', durationMs: 1 };
-        if (name === 'flaky') return { toolName: name, success: false, error: 'boom', durationMs: 1 };
-        if (name === 'works') return { toolName: name, success: true, output: 'works-ok', durationMs: 1 };
+        if (name === 'cheap')
+          return { toolName: name, success: true, output: 'cheap-ok', durationMs: 1 };
+        if (name === 'flaky')
+          return { toolName: name, success: false, error: 'boom', durationMs: 1 };
+        if (name === 'works')
+          return { toolName: name, success: true, output: 'works-ok', durationMs: 1 };
         return { toolName: name, success: false, error: 'unknown', durationMs: 0 };
       },
       async release() {},
@@ -410,9 +458,7 @@ describe('computeLevels', () => {
       id: 'p2',
       createdAt: 0,
       rationale: '',
-      steps: [
-        { id: 'a', goal: 'a', dependsOn: ['ghost'], status: 'pending' },
-      ],
+      steps: [{ id: 'a', goal: 'a', dependsOn: ['ghost'], status: 'pending' }],
     };
     const levels = computeLevels(plan);
     expect(levels).toHaveLength(1);
@@ -444,11 +490,11 @@ describe('PlanExecuteExecutor — trigger #3 (goalUpdates + egoRelevance)', () =
     const model = new ScriptedAdapter([initialPlan, refreshedPlan, '완료']);
     const execLog: string[] = [];
     const reactFallback = new ReactExecutor(model);
-    const ex = new PlanExecuteExecutor(
-      model,
-      reactFallback,
-      { capabilityGuard: alwaysAllow, toolSandbox: makeSandbox(execLog), sessionPolicy: ownerPolicy },
-    );
+    const ex = new PlanExecuteExecutor(model, reactFallback, {
+      capabilityGuard: alwaysAllow,
+      toolSandbox: makeSandbox(execLog),
+      sessionPolicy: ownerPolicy,
+    });
 
     const events = await collect(
       ex.run(
@@ -461,7 +507,9 @@ describe('PlanExecuteExecutor — trigger #3 (goalUpdates + egoRelevance)', () =
 
     const replanMarkers = events.filter(
       (e) => e.kind === 'step' && (e as { step: { kind: string } }).step.kind === 'replan',
-    ) as { step: { content: { reason?: string; goalUpdateCount?: number; egoRelevance?: number } } }[];
+    ) as {
+      step: { content: { reason?: string; goalUpdateCount?: number; egoRelevance?: number } };
+    }[];
     expect(replanMarkers).toHaveLength(1);
     expect(replanMarkers[0]?.step.content.reason).toBe('goal_updates_high_relevance');
     expect(replanMarkers[0]?.step.content.goalUpdateCount).toBe(1);
@@ -482,11 +530,11 @@ describe('PlanExecuteExecutor — trigger #3 (goalUpdates + egoRelevance)', () =
     });
     const model = new ScriptedAdapter([plan, '완료']);
     const reactFallback = new ReactExecutor(model);
-    const ex = new PlanExecuteExecutor(
-      model,
-      reactFallback,
-      { capabilityGuard: alwaysAllow, toolSandbox: makeSandbox(), sessionPolicy: ownerPolicy },
-    );
+    const ex = new PlanExecuteExecutor(model, reactFallback, {
+      capabilityGuard: alwaysAllow,
+      toolSandbox: makeSandbox(),
+      sessionPolicy: ownerPolicy,
+    });
 
     const events = await collect(
       ex.run(
@@ -509,15 +557,13 @@ describe('PlanExecuteExecutor — trigger #3 (goalUpdates + egoRelevance)', () =
     });
     const model = new ScriptedAdapter([plan, '완료']);
     const reactFallback = new ReactExecutor(model);
-    const ex = new PlanExecuteExecutor(
-      model,
-      reactFallback,
-      { capabilityGuard: alwaysAllow, toolSandbox: makeSandbox(), sessionPolicy: ownerPolicy },
-    );
+    const ex = new PlanExecuteExecutor(model, reactFallback, {
+      capabilityGuard: alwaysAllow,
+      toolSandbox: makeSandbox(),
+      sessionPolicy: ownerPolicy,
+    });
 
-    const events = await collect(
-      ex.run(makeCtx({ egoCognition: cognitionHigh, goalUpdates: [] })),
-    );
+    const events = await collect(ex.run(makeCtx({ egoCognition: cognitionHigh, goalUpdates: [] })));
     const replanMarkers = events.filter(
       (e) => e.kind === 'step' && (e as { step: { kind: string } }).step.kind === 'replan',
     );
@@ -544,10 +590,16 @@ describe('PlanExecuteExecutor — trigger #3 (goalUpdates + egoRelevance)', () =
 
     const sandbox: Contracts.ToolSandbox = {
       async acquire() {
-        return { id: 'sb', status: 'ready', startedAt: nowMs(), resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } };
+        return {
+          id: 'sb',
+          status: 'ready',
+          startedAt: nowMs(),
+          resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 },
+        };
       },
       async execute(_sb, name) {
-        if (name === 'flaky') return { toolName: name, success: false, error: 'boom', durationMs: 0 };
+        if (name === 'flaky')
+          return { toolName: name, success: false, error: 'boom', durationMs: 0 };
         return { toolName: name, success: true, output: 'ok', durationMs: 1 };
       },
       async release() {},
@@ -613,11 +665,11 @@ describe('PlanExecuteExecutor — planner JSON mode', () => {
     });
     const model = new CapturingAdapter([planJson, '최종']);
     const reactFallback = new ReactExecutor(model);
-    const ex = new PlanExecuteExecutor(
-      model,
-      reactFallback,
-      { capabilityGuard: alwaysAllow, toolSandbox: makeSandbox(), sessionPolicy: ownerPolicy },
-    );
+    const ex = new PlanExecuteExecutor(model, reactFallback, {
+      capabilityGuard: alwaysAllow,
+      toolSandbox: makeSandbox(),
+      sessionPolicy: ownerPolicy,
+    });
     await collect(ex.run(makeCtx()));
 
     // Two stream() calls: [0] planner, [1] synthesis.
@@ -638,10 +690,16 @@ describe('PlanExecuteExecutor — planner JSON mode', () => {
     const model = new CapturingAdapter([initialPlan, replanPlan, '복구']);
     const sandbox: Contracts.ToolSandbox = {
       async acquire() {
-        return { id: 'sb', status: 'ready', startedAt: nowMs(), resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } };
+        return {
+          id: 'sb',
+          status: 'ready',
+          startedAt: nowMs(),
+          resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 },
+        };
       },
       async execute(_sb, name) {
-        if (name === 'flaky') return { toolName: name, success: false, error: 'boom', durationMs: 0 };
+        if (name === 'flaky')
+          return { toolName: name, success: false, error: 'boom', durationMs: 0 };
         return { toolName: name, success: true, output: 'ok', durationMs: 1 };
       },
       async release() {},
@@ -673,11 +731,11 @@ describe('PlanExecuteExecutor — planner JSON mode', () => {
     });
     const model = new CapturingAdapter([initialPlan, refreshedPlan, '완료']);
     const reactFallback = new ReactExecutor(model);
-    const ex = new PlanExecuteExecutor(
-      model,
-      reactFallback,
-      { capabilityGuard: alwaysAllow, toolSandbox: makeSandbox(), sessionPolicy: ownerPolicy },
-    );
+    const ex = new PlanExecuteExecutor(model, reactFallback, {
+      capabilityGuard: alwaysAllow,
+      toolSandbox: makeSandbox(),
+      sessionPolicy: ownerPolicy,
+    });
     await collect(
       ex.run(
         makeCtx({
@@ -713,7 +771,12 @@ describe('PlanExecuteExecutor — replan downgrade (continued)', () => {
 
     const failingSandbox: Contracts.ToolSandbox = {
       async acquire() {
-        return { id: 'sb', status: 'ready', startedAt: nowMs(), resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } };
+        return {
+          id: 'sb',
+          status: 'ready',
+          startedAt: nowMs(),
+          resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 },
+        };
       },
       async execute(_sb, name) {
         return { toolName: name, success: false, error: 'always boom', durationMs: 0 };
@@ -807,10 +870,7 @@ describe('preservePriorSuccesses', () => {
         return candidates[0]?.id ?? null;
       },
     };
-    const prior = [
-      step('s1', 'A', { status: 'success' }),
-      step('s2', 'B', { status: 'success' }),
-    ];
+    const prior = [step('s1', 'A', { status: 'success' }), step('s2', 'B', { status: 'success' })];
     const next = [step('s1', 'A'), step('s2', 'B')];
     await preservePriorSuccesses(prior, next, noisyMatcher);
     expect(matcherCalls).toBe(0);
@@ -865,13 +925,21 @@ describe('PlanExecuteExecutor — semantic preservation on replan', () => {
     const calls: string[] = [];
     const sandbox: Contracts.ToolSandbox = {
       async acquire() {
-        return { id: 'sb', status: 'ready', startedAt: nowMs(), resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } };
+        return {
+          id: 'sb',
+          status: 'ready',
+          startedAt: nowMs(),
+          resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 },
+        };
       },
       async execute(_sb, name) {
         calls.push(name);
-        if (name === 'cheap') return { toolName: name, success: true, output: 'cheap-ok', durationMs: 1 };
-        if (name === 'flaky') return { toolName: name, success: false, error: 'boom', durationMs: 1 };
-        if (name === 'works') return { toolName: name, success: true, output: 'works-ok', durationMs: 1 };
+        if (name === 'cheap')
+          return { toolName: name, success: true, output: 'cheap-ok', durationMs: 1 };
+        if (name === 'flaky')
+          return { toolName: name, success: false, error: 'boom', durationMs: 1 };
+        if (name === 'works')
+          return { toolName: name, success: true, output: 'works-ok', durationMs: 1 };
         return { toolName: name, success: false, error: 'unknown', durationMs: 0 };
       },
       async release() {},
@@ -932,7 +1000,12 @@ describe('PlanExecuteExecutor — semantic preservation on replan', () => {
     const calls: string[] = [];
     const sandbox: Contracts.ToolSandbox = {
       async acquire() {
-        return { id: 'sb', status: 'ready', startedAt: nowMs(), resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } };
+        return {
+          id: 'sb',
+          status: 'ready',
+          startedAt: nowMs(),
+          resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 },
+        };
       },
       async execute(_sb, name) {
         calls.push(name);

@@ -74,9 +74,7 @@ export class NavItemEl extends LitElement {
       e.preventDefault();
       return;
     }
-    this.dispatchEvent(
-      new CustomEvent('nav-select', { bubbles: true, composed: true }),
-    );
+    this.dispatchEvent(new CustomEvent('nav-select', { bubbles: true, composed: true }));
   }
 
   private handleKey(e: KeyboardEvent): void {

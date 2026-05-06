@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import type { SessionEvent } from '@agent-platform/core';
 import { PromptBuilder } from './builder.js';
 
-function ev(partial: Partial<SessionEvent> & Pick<SessionEvent, 'eventType' | 'role' | 'content'>): SessionEvent {
+function ev(
+  partial: Partial<SessionEvent> & Pick<SessionEvent, 'eventType' | 'role' | 'content'>,
+): SessionEvent {
   return {
     sessionId: 's1',
     createdAt: partial.createdAt ?? 0,

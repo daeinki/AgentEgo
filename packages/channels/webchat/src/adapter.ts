@@ -2,11 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { Contracts, OutboundContent, StandardMessage } from '@agent-platform/core';
 import { generateMessageId, generateTraceId, nowMs } from '@agent-platform/core';
-import {
-  decodeBrowserInbound,
-  encodeBrowserOutbound,
-  type BrowserOutbound,
-} from './envelope.js';
+import { decodeBrowserInbound, encodeBrowserOutbound, type BrowserOutbound } from './envelope.js';
 
 type ChannelAdapter = Contracts.ChannelAdapter;
 type ChannelConfig = Contracts.ChannelConfig;
@@ -180,7 +176,11 @@ export class WebChatAdapter implements ChannelAdapter {
           return;
         }
         const msg = this.buildStandardMessage(registration, parsed.text);
-        this.safeSend(ws, { type: 'accepted', traceId: msg.traceId, ...(parsed.clientMessageId ? { clientMessageId: parsed.clientMessageId } : {}) });
+        this.safeSend(ws, {
+          type: 'accepted',
+          traceId: msg.traceId,
+          ...(parsed.clientMessageId ? { clientMessageId: parsed.clientMessageId } : {}),
+        });
         this.handler?.(msg);
       }
     });

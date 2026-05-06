@@ -9,7 +9,12 @@ import { hashSkillDirectory } from './hash.js';
 async function scaffoldSkill(
   root: string,
   id: string,
-  extras: { name?: string; description?: string; signingSecret?: string; withTamper?: boolean } = {},
+  extras: {
+    name?: string;
+    description?: string;
+    signingSecret?: string;
+    withTamper?: boolean;
+  } = {},
 ): Promise<string> {
   const dir = resolve(root, id);
   mkdirSync(dir, { recursive: true });

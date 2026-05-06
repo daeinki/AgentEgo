@@ -91,16 +91,13 @@ function buildErrorPayload(err: unknown, tag: string): Record<string, unknown> {
     const rawErrors = err.validationErrors;
     if (Array.isArray(rawErrors) && rawErrors.length > 0) {
       payload['validationErrorCount'] = rawErrors.length;
-      payload['validationErrors'] = rawErrors
-        .slice(0, E1_ERROR_MAX_VALIDATION_ERRORS)
-        .map((e) => {
-          const ve = e as { path?: unknown; message?: unknown };
-          return {
-            path: typeof ve.path === 'string' ? ve.path : String(ve.path ?? ''),
-            message:
-              typeof ve.message === 'string' ? ve.message : String(ve.message ?? ''),
-          };
-        });
+      payload['validationErrors'] = rawErrors.slice(0, E1_ERROR_MAX_VALIDATION_ERRORS).map((e) => {
+        const ve = e as { path?: unknown; message?: unknown };
+        return {
+          path: typeof ve.path === 'string' ? ve.path : String(ve.path ?? ''),
+          message: typeof ve.message === 'string' ? ve.message : String(ve.message ?? ''),
+        };
+      });
     }
     if (err.candidate !== undefined) {
       try {
@@ -171,10 +168,7 @@ export class EgoLayer {
     return this.breaker.snapshot();
   }
 
-  async processDetailed(
-    msg: StandardMessage,
-    params: EgoProcessParams,
-  ): Promise<ProcessRecord> {
+  async processDetailed(msg: StandardMessage, params: EgoProcessParams): Promise<ProcessRecord> {
     const pipelineStart = nowMs();
     const signal = intake(msg);
     const normalized = normalize(signal);
@@ -310,9 +304,9 @@ export class EgoLayer {
       // E1 payload work surfaced the tag.
       const isTimeout = err instanceof TimeoutError || err instanceof EgoTimeoutError;
       const fallbackTag = isTimeout ? 'ego_timeout' : 'ego_runtime_error';
-      const tag = (err instanceof SchemaValidationError
-        ? err.tag
-        : fallbackTag) as import('@agent-platform/core').AuditTag;
+      const tag = (
+        err instanceof SchemaValidationError ? err.tag : fallbackTag
+      ) as import('@agent-platform/core').AuditTag;
       this.deps.traceLogger?.event({
         traceId: msg.traceId,
         sessionId: params.sessionId,
@@ -438,10 +432,7 @@ export class EgoLayer {
         agentId: params.agentId,
         parameters: { from: 'active', to: downgraded, totalCostUsd },
       });
-      throw new DailyCostCapExceeded(
-        this.config.thresholds.maxCostUsdPerDay,
-        totalCostUsd,
-      );
+      throw new DailyCostCapExceeded(this.config.thresholds.maxCostUsdPerDay, totalCostUsd);
     }
 
     // Apply confidence threshold override (§5.6)

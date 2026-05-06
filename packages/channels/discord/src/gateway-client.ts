@@ -147,7 +147,10 @@ export class DiscordGatewayClient {
   private async openSocket(resuming: boolean): Promise<void> {
     if (this.closed || this.fatal) return;
     const Ctor = (this.options.WebSocketImpl ?? WebSocket) as typeof WebSocket;
-    const url = resuming && this.resumeGatewayUrl ? this.resumeGatewayUrl : this.options.url ?? DEFAULT_GATEWAY_URL;
+    const url =
+      resuming && this.resumeGatewayUrl
+        ? this.resumeGatewayUrl
+        : (this.options.url ?? DEFAULT_GATEWAY_URL);
     this.resumePending = resuming;
     this.emit({ type: 'connecting', attempt: this.reconnectAttempts, resuming });
 
@@ -372,8 +375,10 @@ export class DiscordGatewayClient {
 
 // ─── Multi-shard manager ───────────────────────────────────────────────────
 
-export interface ShardManagerOptions
-  extends Omit<GatewayClientOptions, 'shard' | 'autoReconnect' | 'maxReconnectDelayMs'> {
+export interface ShardManagerOptions extends Omit<
+  GatewayClientOptions,
+  'shard' | 'autoReconnect' | 'maxReconnectDelayMs'
+> {
   /**
    * Total number of shards. Each shard `i` (0..N-1) gets its own
    * `DiscordGatewayClient` configured with `shard: [i, N]`.

@@ -129,7 +129,9 @@ export class MemoryChunkStore {
   }
 
   listAll(): ChunkRecord[] {
-    const stmt = this.db.prepare('SELECT * FROM memory_chunks ORDER BY updated_at DESC LIMIT 10000');
+    const stmt = this.db.prepare(
+      'SELECT * FROM memory_chunks ORDER BY updated_at DESC LIMIT 10000',
+    );
     const rows = stmt.all() as unknown as ChunkRow[];
     return rows.map(rowToChunk);
   }

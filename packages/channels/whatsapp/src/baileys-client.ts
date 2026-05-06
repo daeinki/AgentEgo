@@ -1,8 +1,4 @@
-import type {
-  WhatsAppClient,
-  WhatsAppMessage,
-  WhatsAppSendParams,
-} from './whatsapp-client.js';
+import type { WhatsAppClient, WhatsAppMessage, WhatsAppSendParams } from './whatsapp-client.js';
 
 /**
  * baileys-backed WhatsApp client.
@@ -144,17 +140,14 @@ class BaileysWhatsAppClient implements WhatsAppClient {
 
 export function translateBaileysMessage(raw: BaileysMessageShape): WhatsAppMessage | null {
   if (!raw.key.remoteJid) return null;
-  const text =
-    raw.message?.conversation ??
-    raw.message?.extendedTextMessage?.text ??
-    undefined;
+  const text = raw.message?.conversation ?? raw.message?.extendedTextMessage?.text ?? undefined;
   const caption =
     raw.message?.imageMessage?.caption ?? raw.message?.videoMessage?.caption ?? undefined;
   if (!text && !caption) return null;
 
   const isGroup = raw.key.remoteJid.endsWith('@g.us');
   // For groups baileys sets `key.participant`; for 1:1 chats `remoteJid` is the sender.
-  const from = isGroup ? raw.key.participant ?? raw.key.remoteJid : raw.key.remoteJid;
+  const from = isGroup ? (raw.key.participant ?? raw.key.remoteJid) : raw.key.remoteJid;
 
   const msg: WhatsAppMessage = {
     id: raw.key.id ?? `in-${Date.now()}`,

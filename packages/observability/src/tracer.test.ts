@@ -24,7 +24,11 @@ describe('withSpan', () => {
   });
 
   it('records an exception, rethrows, and marks ERROR', async () => {
-    await expect(withSpan('boom', async () => { throw new Error('bad'); })).rejects.toThrow('bad');
+    await expect(
+      withSpan('boom', async () => {
+        throw new Error('bad');
+      }),
+    ).rejects.toThrow('bad');
     const spans = await tel.collectSpans();
     expect(spans).toHaveLength(1);
     expect(spans[0]!.status.code).toBe(2); // ERROR

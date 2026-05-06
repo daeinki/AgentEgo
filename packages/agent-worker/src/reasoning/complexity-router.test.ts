@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import type { Contracts, StandardMessage } from '@agent-platform/core';
 import { generateMessageId, generateTraceId, nowMs } from '@agent-platform/core';
-import { DefaultComplexityRouter, countImperativeVerbs, countSentences } from './complexity-router.js';
+import {
+  DefaultComplexityRouter,
+  countImperativeVerbs,
+  countSentences,
+} from './complexity-router.js';
 
 function makeMsg(text: string): StandardMessage {
   return {
@@ -26,9 +30,9 @@ describe('DefaultComplexityRouter — decision tree', () => {
   const router = new DefaultComplexityRouter();
 
   it('R1: EGO off, simple question → react', () => {
-    expect(
-      router.select({ userMessage: makeMsg('지금 시각?'), availableTools: toolSet(5) }),
-    ).toBe('react');
+    expect(router.select({ userMessage: makeMsg('지금 시각?'), availableTools: toolSet(5) })).toBe(
+      'react',
+    );
   });
 
   it('R2: estimatedComplexity=low → react', () => {

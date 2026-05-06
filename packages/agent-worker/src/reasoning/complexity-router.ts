@@ -51,7 +51,10 @@ export class DefaultComplexityRouter implements Contracts.ComplexityRouter {
 const SENTENCE_SPLIT = /[.!?。？！]/;
 
 export function countSentences(text: string): number {
-  const parts = text.split(SENTENCE_SPLIT).map((s) => s.trim()).filter(Boolean);
+  const parts = text
+    .split(SENTENCE_SPLIT)
+    .map((s) => s.trim())
+    .filter(Boolean);
   return Math.max(1, parts.length);
 }
 

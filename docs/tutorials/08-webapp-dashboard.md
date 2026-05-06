@@ -34,6 +34,7 @@ pnpm --filter @agent-platform/cli dev -- gateway start
 ```
 
 출력 중 다음 줄을 확인:
+
 ```
 [gateway] listening
   http   http://127.0.0.1:18790
@@ -43,6 +44,7 @@ pnpm --filter @agent-platform/cli dev -- gateway start
 ```
 
 커스텀 토큰으로 하고 싶다면:
+
 ```bash
 pnpm --filter @agent-platform/cli dev -- gateway start --auth-token my-secret-123
 ```
@@ -54,6 +56,7 @@ pnpm --filter @agent-platform/webapp dev
 ```
 
 출력:
+
 ```
 VITE v6.x.x  ready in 900 ms
 
@@ -61,6 +64,7 @@ VITE v6.x.x  ready in 900 ms
 ```
 
 Vite 는 `/rpc`, `/healthz`, `/device/*` 요청을 자동으로 게이트웨이로 프록시한다(`vite.config.ts`). 게이트웨이 포트를 변경했다면:
+
 ```bash
 AGENT_GATEWAY_ORIGIN=http://127.0.0.1:18790 pnpm --filter @agent-platform/webapp dev
 ```
@@ -80,6 +84,7 @@ AGENT_GATEWAY_ORIGIN=http://127.0.0.1:18790 pnpm --filter @agent-platform/webapp
 다이얼로그의 비밀번호 필드에 Step 1 의 `Bearer` 값(`dev-token` 또는 커스텀 토큰) 을 붙여넣고 **Enroll** 클릭.
 
 **내부 동작** (`packages/webapp/src/ui/controllers/device-identity.ts`):
+
 1. `@noble/ed25519.utils.randomPrivateKey()` 로 32B 개인키 생성
 2. `getPublicKeyAsync()` 로 대응 공개키 도출
 3. 개인키 → IndexedDB (`agent-platform/keys/devicePrivKey`)
@@ -122,6 +127,7 @@ cat ~/.agent/state/devices.json
 사이드바 **Chat** 클릭 → 하단 입력창에 `안녕` 입력 → Enter.
 
 관찰 포인트:
+
 - 우측 빨간 말풍선에 사용자 메시지
 - 좌측 회색 말풍선(Assistant) 이 **스트리밍** 으로 토큰마다 갱신 — 상단에 `◉ ego`, 이어서 `✎ streaming` 같은 상태가 아래 PhaseLine 에 한 줄로 뜸
 - 스트리밍이 끝나면 PhaseLine 이 사라짐
@@ -129,6 +135,7 @@ cat ~/.agent/state/devices.json
 ### Step 7: PhaseLine 과 TUI 비교
 
 터미널 C 를 더 띄우고:
+
 ```bash
 pnpm --filter @agent-platform/cli dev -- tui --auth-token dev-token
 ```
@@ -187,6 +194,7 @@ pnpm --filter @agent-platform/webapp build
 ### Vite dev 에서 WS 가 연결되지 않음
 
 `vite.config.ts` 의 `server.proxy` 가 `ws://<gateway>` 를 따라가는지 확인. 기본은 `http://127.0.0.1:18790` 이며, 이 origin 이 `ws://` 로 변환되어 `/rpc` 프록시에 사용된다. 포트가 다르면:
+
 ```bash
 AGENT_GATEWAY_ORIGIN=http://127.0.0.1:12345 pnpm --filter @agent-platform/webapp dev
 ```

@@ -1,6 +1,6 @@
 packages:
-  - "packages/*"
-  - "packages/channels/*"
+  - 'packages/*'
+  - 'packages/channels/*'
 allowBuilds:
   '@whiskeysockets/baileys': true
   esbuild: true

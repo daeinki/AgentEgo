@@ -48,11 +48,7 @@ export const PhaseEvent = Type.Object({
 export type PhaseEvent = Static<typeof PhaseEvent>;
 
 // Terminal phases — after one of these fires, no further PhaseEvent for the turn.
-export const TERMINAL_PHASES: readonly Phase[] = Object.freeze([
-  'complete',
-  'aborted',
-  'error',
-]);
+export const TERMINAL_PHASES: readonly Phase[] = Object.freeze(['complete', 'aborted', 'error']);
 
 export function isTerminalPhase(phase: Phase): boolean {
   return TERMINAL_PHASES.includes(phase);

@@ -13,9 +13,7 @@ import { parseManifest, type SkillManifest } from './manifest.js';
  * `../builtin` from here is correct for both compiled (dist) and type-checked
  * source-tree resolutions.
  */
-export const BUILTIN_SKILLS_ROOT: string = fileURLToPath(
-  new URL('../builtin', import.meta.url),
-);
+export const BUILTIN_SKILLS_ROOT: string = fileURLToPath(new URL('../builtin', import.meta.url));
 
 export interface SeedBuiltinSkillsOptions {
   /**
@@ -84,7 +82,9 @@ export async function seedBuiltinSkills(
       const raw = await readFile(manifestPath, 'utf-8');
       bundled = parseManifest(JSON.parse(raw));
     } catch (err) {
-      log(`seedBuiltinSkills: ${entry.name}: invalid manifest (${(err as Error).message}) — skipping`);
+      log(
+        `seedBuiltinSkills: ${entry.name}: invalid manifest (${(err as Error).message}) — skipping`,
+      );
       continue;
     }
 
@@ -155,4 +155,3 @@ export function compareVersions(a: string, b: string): number {
   }
   return 0;
 }
-

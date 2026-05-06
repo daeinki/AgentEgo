@@ -38,7 +38,12 @@ function baseConfig(overrides: Partial<EgoFullConfig> = {}): EgoFullConfig {
       measurementWindowDays: 7,
     },
     prompts: { systemPromptFile: '/nonexistent.md', responseFormat: 'json' },
-    goals: { enabled: false, maxActiveGoals: 10, autoDetectCompletion: false, storePath: '~/.agent/ego/goals.json' },
+    goals: {
+      enabled: false,
+      maxActiveGoals: 10,
+      autoDetectCompletion: false,
+      storePath: '~/.agent/ego/goals.json',
+    },
     memory: {
       searchOnCognize: true,
       maxSearchResults: 5,

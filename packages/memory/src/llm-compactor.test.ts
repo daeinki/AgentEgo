@@ -5,10 +5,7 @@ import type { ChunkRecord } from './db/store.js';
 class ScriptedModel implements CompactorModelAdapter {
   public calls: Array<{ systemPrompt: string; userContent: string }> = [];
   constructor(private readonly scripts: string[]) {}
-  async *stream(req: {
-    systemPrompt: string;
-    messages: Array<{ role: string; content: string }>;
-  }) {
+  async *stream(req: { systemPrompt: string; messages: Array<{ role: string; content: string }> }) {
     const first = req.messages[0];
     this.calls.push({
       systemPrompt: req.systemPrompt,

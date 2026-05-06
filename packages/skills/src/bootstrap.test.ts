@@ -60,7 +60,7 @@ describe('seedBuiltinSkills', () => {
     await writeSkill(
       resolve(builtinRoot, 'sample-skill'),
       mkManifest(),
-      "export const createTools = () => [];",
+      'export const createTools = () => [];',
     );
 
     const result = await seedBuiltinSkills(installRoot, builtinRoot, { logger });
@@ -81,7 +81,7 @@ describe('seedBuiltinSkills', () => {
     await writeSkill(
       resolve(builtinRoot, 'sample-skill'),
       mkManifest(),
-      "export const createTools = () => [];",
+      'export const createTools = () => [];',
     );
     await seedBuiltinSkills(installRoot, builtinRoot, { logger });
     logs = [];
@@ -158,11 +158,9 @@ describe('seedBuiltinSkills', () => {
   });
 
   it('returns empty result when builtinRoot does not exist', async () => {
-    const result = await seedBuiltinSkills(
-      installRoot,
-      resolve(tmpRoot, 'does-not-exist'),
-      { logger },
-    );
+    const result = await seedBuiltinSkills(installRoot, resolve(tmpRoot, 'does-not-exist'), {
+      logger,
+    });
     expect(result.seeded).toEqual([]);
     expect(result.upgraded).toEqual([]);
     expect(result.skipped).toEqual([]);

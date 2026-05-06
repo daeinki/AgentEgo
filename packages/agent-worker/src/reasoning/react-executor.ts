@@ -227,7 +227,12 @@ export class ReactExecutor implements Contracts.Reasoner {
   ): Promise<{ success: boolean; text: string; toolError?: boolean; reason?: string }> {
     const { capabilityGuard, toolSandbox, sessionPolicy } = this.deps;
     if (!capabilityGuard || !toolSandbox) {
-      return { success: false, text: '[tool execution not wired]', toolError: true, reason: 'no_executor' };
+      return {
+        success: false,
+        text: '[tool execution not wired]',
+        toolError: true,
+        reason: 'no_executor',
+      };
     }
 
     let args: unknown;
@@ -325,7 +330,9 @@ function toToolDefinition(t: Contracts.ToolDescriptor): ToolDefinition {
   return { name: t.name, description: t.description, inputSchema: t.inputSchema };
 }
 
-function toCompletionMessage(m: Contracts.ReasoningContext['priorMessages'][number]): CompletionMessage {
+function toCompletionMessage(
+  m: Contracts.ReasoningContext['priorMessages'][number],
+): CompletionMessage {
   const out: CompletionMessage = { role: m.role, content: m.content };
   if (m.toolCallId !== undefined) out.toolCallId = m.toolCallId;
   if (m.toolName !== undefined) out.toolName = m.toolName;
@@ -350,7 +357,11 @@ function handleChunk(
     case 'tool_call_end':
       return null;
     case 'usage': {
-      const ev: Contracts.ReasoningEvent = { kind: 'usage', inputTokens: chunk.inputTokens, outputTokens: chunk.outputTokens };
+      const ev: Contracts.ReasoningEvent = {
+        kind: 'usage',
+        inputTokens: chunk.inputTokens,
+        outputTokens: chunk.outputTokens,
+      };
       if (chunk.cost !== undefined) (ev as { cost?: number }).cost = chunk.cost;
       return ev;
     }

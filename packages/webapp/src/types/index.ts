@@ -5,13 +5,7 @@
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 
-export type ViewId =
-  | 'chat'
-  | 'overview'
-  | 'channels'
-  | 'instances'
-  | 'sessions'
-  | 'cron';
+export type ViewId = 'chat' | 'overview' | 'channels' | 'instances' | 'sessions' | 'cron';
 
 export interface ChatTurn {
   id: string;

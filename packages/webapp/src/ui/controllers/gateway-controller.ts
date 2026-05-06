@@ -18,10 +18,7 @@ export class GatewayController implements ReactiveController {
   private _enrolled = false;
   private _lastError: string | null = null;
 
-  private readonly notifListeners = new Map<
-    string,
-    Set<(params: unknown) => void>
-  >();
+  private readonly notifListeners = new Map<string, Set<(params: unknown) => void>>();
 
   constructor(host: ReactiveControllerHost) {
     this.host = host;
@@ -122,6 +119,4 @@ export class GatewayController implements ReactiveController {
   }
 }
 
-export const gatewayContext = createContext<GatewayController>(
-  Symbol('gateway-controller'),
-);
+export const gatewayContext = createContext<GatewayController>(Symbol('gateway-controller'));

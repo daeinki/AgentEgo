@@ -12,10 +12,7 @@ export interface ChunkerOptions {
 
 const DEFAULT_TARGET_TOKENS = 300;
 
-export function chunkText(
-  text: string,
-  options: Partial<ChunkerOptions> = {},
-): string[] {
+export function chunkText(text: string, options: Partial<ChunkerOptions> = {}): string[] {
   const target = options.targetTokens ?? DEFAULT_TARGET_TOKENS;
   const lines = text.split(/\r?\n/);
   const chunks: string[] = [];

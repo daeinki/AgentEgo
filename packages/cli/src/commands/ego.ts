@@ -139,9 +139,7 @@ async function showEgoStatus(configPath: string): Promise<void> {
     if (config.llm) {
       console.log(`\nLLM: ${config.llm.provider}/${config.llm.model}`);
       if (config.llm.fallback) {
-        console.log(
-          `Fallback LLM: ${config.llm.fallback.provider}/${config.llm.fallback.model}`,
-        );
+        console.log(`Fallback LLM: ${config.llm.fallback.provider}/${config.llm.fallback.model}`);
       }
     } else {
       console.log('\nLLM: not configured (rule-based only)');

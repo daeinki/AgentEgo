@@ -52,12 +52,9 @@ export async function deviceRevokeCommand(deviceId: string): Promise<void> {
 }
 
 function formatHeader(): string {
-  return [
-    pad('deviceId', 38),
-    pad('name', 24),
-    pad('enrolledAt', 19),
-    pad('lastSeenAt', 19),
-  ].join('  ');
+  return [pad('deviceId', 38), pad('name', 24), pad('enrolledAt', 19), pad('lastSeenAt', 19)].join(
+    '  ',
+  );
 }
 
 function formatRow(d: DeviceRecord): string {

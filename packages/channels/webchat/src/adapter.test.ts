@@ -61,9 +61,7 @@ describe('WebChatAdapter', () => {
     ws.on('message', (data: Buffer) => inboxForClient.push(JSON.parse(data.toString())));
 
     ws.send(JSON.stringify({ type: 'identify', userId: 'owner-u' }));
-    await waitFor(() =>
-      inboxForClient.find((m) => (m as { type: string }).type === 'system'),
-    );
+    await waitFor(() => inboxForClient.find((m) => (m as { type: string }).type === 'system'));
 
     ws.send(JSON.stringify({ type: 'say', text: '안녕', clientMessageId: 'c-1' }));
 
@@ -76,9 +74,9 @@ describe('WebChatAdapter', () => {
     expect(msg.channel.type).toBe('webchat');
 
     // accepted envelope sent to the browser
-    const accepted = inboxForClient.find(
-      (m) => (m as { type: string }).type === 'accepted',
-    ) as { type: string; clientMessageId: string; traceId: string } | undefined;
+    const accepted = inboxForClient.find((m) => (m as { type: string }).type === 'accepted') as
+      | { type: string; clientMessageId: string; traceId: string }
+      | undefined;
     expect(accepted?.clientMessageId).toBe('c-1');
     expect(accepted?.traceId).toBe(msg.traceId);
 
@@ -93,7 +91,9 @@ describe('WebChatAdapter', () => {
     ws.send(JSON.stringify({ type: 'say', text: 'hi' }));
     await waitFor(() => inbox.find((m) => (m as { type: string }).type === 'error'));
 
-    expect(inbox.some((m) => (m as { type: string; message: string }).message === 'identify first')).toBe(true);
+    expect(
+      inbox.some((m) => (m as { type: string; message: string }).message === 'identify first'),
+    ).toBe(true);
 
     ws.close();
   });
@@ -114,7 +114,9 @@ describe('WebChatAdapter', () => {
     const result = await adapter.sendMessage('webchat-test', { type: 'text', text: 'hello back' });
     expect(result.status).toBe('sent');
 
-    const out = await waitFor(() => inbox.find((m) => (m as { type: string }).type === 'out')) as {
+    const out = (await waitFor(() =>
+      inbox.find((m) => (m as { type: string }).type === 'out'),
+    )) as {
       type: string;
       content: { type: string; text: string };
     };
@@ -153,7 +155,9 @@ describe('WebChatAdapter', () => {
     ws.on('message', (d: Buffer) => inbox.push(JSON.parse(d.toString())));
 
     ws.send(JSON.stringify({ type: 'ping', sentAt: 7 }));
-    const pong = await waitFor(() => inbox.find((m) => (m as { type: string }).type === 'pong')) as {
+    const pong = (await waitFor(() =>
+      inbox.find((m) => (m as { type: string }).type === 'pong'),
+    )) as {
       sentAt: number;
     };
     expect(pong.sentAt).toBe(7);

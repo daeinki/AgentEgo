@@ -95,9 +95,8 @@ export class EnrollDialogEl extends LitElement {
       <div class="card" role="dialog" aria-labelledby="enroll-title">
         <h2 id="enroll-title">Enroll this browser</h2>
         <p>
-          Paste the gateway's master Bearer token. This one-time step registers
-          an ed25519 keypair held in this browser — future connects use the
-          device identity, not the master token.
+          Paste the gateway's master Bearer token. This one-time step registers an ed25519 keypair
+          held in this browser — future connects use the device identity, not the master token.
         </p>
         <input
           type="password"

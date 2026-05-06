@@ -7,11 +7,7 @@ import { PalaceMemorySystem, HashEmbedder } from '@agent-platform/memory';
 import type { Contracts, Phase, PhaseEventDetail, StandardMessage } from '@agent-platform/core';
 import { generateMessageId, generateTraceId, nowMs } from '@agent-platform/core';
 import { AgentRunner } from './agent-runner.js';
-import type {
-  CompletionRequest,
-  ModelAdapter,
-  StreamChunk,
-} from '../model/types.js';
+import type { CompletionRequest, ModelAdapter, StreamChunk } from '../model/types.js';
 
 class ScriptedModelAdapter implements ModelAdapter {
   public lastRequest: CompletionRequest | undefined;
@@ -32,10 +28,7 @@ class ScriptedModelAdapter implements ModelAdapter {
   }
 }
 
-function makeMsg(
-  text: string,
-  metadata: Record<string, unknown> = {},
-): StandardMessage {
+function makeMsg(text: string, metadata: Record<string, unknown> = {}): StandardMessage {
   return {
     id: generateMessageId(),
     traceId: generateTraceId(),
@@ -101,12 +94,7 @@ describe('AgentRunner (extended)', () => {
     const model = new ScriptedModelAdapter([
       'TypeScript에서 배포 파이프라인을 구성하려면 GitHub Actions 와 Docker 를 쓰세요.',
     ]);
-    const runner = new AgentRunner(
-      sessionStore,
-      model,
-      { agentId: 'default' },
-      { memory },
-    );
+    const runner = new AgentRunner(sessionStore, model, { agentId: 'default' }, { memory });
 
     const result = await runner.processTurn(
       session.id,
@@ -128,12 +116,7 @@ describe('AgentRunner (extended)', () => {
     const model = new ScriptedModelAdapter([
       'auth.ts의 JWT 검증에서 exp claim 체크가 빠졌습니다. 수정 필요.',
     ]);
-    const runner = new AgentRunner(
-      sessionStore,
-      model,
-      { agentId: 'default' },
-      { memory },
-    );
+    const runner = new AgentRunner(sessionStore, model, { agentId: 'default' }, { memory });
     await runner.processTurn(session.id, makeMsg('auth 모듈 리뷰 결과 알려줘'));
 
     const hits = await memory.search('JWT 검증', {
@@ -229,7 +212,17 @@ describe('AgentRunner (extended)', () => {
       async *run(ctx) {
         captured.push(ctx);
         yield { kind: 'delta', text: 'ok' };
-        yield { kind: 'final', text: 'ok', state: { mode: 'react', egoDecisionId: ctx.egoDecisionId, trace: [], budget: { maxSteps: 8, maxToolCalls: 16, spent: { steps: 0, toolCalls: 0 } }, terminationReason: 'final_answer' } };
+        yield {
+          kind: 'final',
+          text: 'ok',
+          state: {
+            mode: 'react',
+            egoDecisionId: ctx.egoDecisionId,
+            trace: [],
+            budget: { maxSteps: 8, maxToolCalls: 16, spent: { steps: 0, toolCalls: 0 } },
+            terminationReason: 'final_answer',
+          },
+        };
       },
     };
     const model = new ScriptedModelAdapter(['unused']);
@@ -270,7 +263,17 @@ describe('AgentRunner (extended)', () => {
       mode: 'react',
       async *run(ctx) {
         captured.push(ctx);
-        yield { kind: 'final', text: 'ok', state: { mode: 'react', egoDecisionId: ctx.egoDecisionId, trace: [], budget: { maxSteps: 8, maxToolCalls: 16, spent: { steps: 0, toolCalls: 0 } }, terminationReason: 'final_answer' } };
+        yield {
+          kind: 'final',
+          text: 'ok',
+          state: {
+            mode: 'react',
+            egoDecisionId: ctx.egoDecisionId,
+            trace: [],
+            budget: { maxSteps: 8, maxToolCalls: 16, spent: { steps: 0, toolCalls: 0 } },
+            terminationReason: 'final_answer',
+          },
+        };
       },
     };
     const runner = new AgentRunner(
@@ -319,7 +322,17 @@ describe('AgentRunner (extended)', () => {
       mode: 'react',
       async *run(ctx) {
         captured.push(ctx);
-        yield { kind: 'final', text: '', state: { mode: 'react', egoDecisionId: null, trace: [], budget: { maxSteps: 8, maxToolCalls: 16, spent: { steps: 0, toolCalls: 0 } }, terminationReason: 'final_answer' } };
+        yield {
+          kind: 'final',
+          text: '',
+          state: {
+            mode: 'react',
+            egoDecisionId: null,
+            trace: [],
+            budget: { maxSteps: 8, maxToolCalls: 16, spent: { steps: 0, toolCalls: 0 } },
+            terminationReason: 'final_answer',
+          },
+        };
       },
     };
     const runner = new AgentRunner(

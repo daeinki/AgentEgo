@@ -48,7 +48,10 @@ describe('LiveToolRegistry (U10 Phase 4.1)', () => {
   it('replace with preserveNames keeps listed tools and swaps the rest', () => {
     const r = new LiveToolRegistry([tool('keep'), tool('drop')]);
     r.replace([tool('fresh')], new Set(['keep']));
-    const names = r.snapshot().map((t) => t.name).sort();
+    const names = r
+      .snapshot()
+      .map((t) => t.name)
+      .sort();
     expect(names).toEqual(['fresh', 'keep']);
   });
 });

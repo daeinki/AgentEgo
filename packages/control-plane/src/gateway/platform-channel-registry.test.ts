@@ -29,9 +29,7 @@ describe('PlatformChannelRegistry', () => {
   it('register → list surfaces the descriptor with status=connected', () => {
     const reg = new PlatformChannelRegistry();
     reg.register('webchat', 'webchat', makeAdapter());
-    expect(reg.list()).toEqual([
-      { id: 'webchat', type: 'webchat', status: 'connected' },
-    ]);
+    expect(reg.list()).toEqual([{ id: 'webchat', type: 'webchat', status: 'connected' }]);
     expect(reg.get('webchat')?.status).toBe('connected');
   });
 

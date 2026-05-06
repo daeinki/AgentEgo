@@ -2,12 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, open } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import {
-  readPidFile,
-  readPortFile,
-  resolveRunning,
-  type PidRecord,
-} from './pidfile.js';
+import { readPidFile, readPortFile, resolveRunning, type PidRecord } from './pidfile.js';
 import type { GatewayPaths } from './paths.js';
 
 export interface DetachOptions {
@@ -68,10 +63,7 @@ export async function detachGateway(options: DetachOptions): Promise<DetachResul
     // check and cause a false "already running" exit.
     child.unref();
 
-    const port = await waitForPort(
-      options.paths,
-      options.readyTimeoutMs ?? 15_000,
-    );
+    const port = await waitForPort(options.paths, options.readyTimeoutMs ?? 15_000);
 
     // After the port file shows up, the child has also written the PID file.
     // Read it back so we return what the supervisor actually recorded.

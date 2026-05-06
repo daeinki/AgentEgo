@@ -94,7 +94,9 @@ export class HttpTelegramClient implements TelegramClient {
       signal: this.abortController?.signal,
     });
     if (!response.ok) {
-      throw new Error(`Telegram API ${method} failed: HTTP ${response.status} ${response.statusText}`);
+      throw new Error(
+        `Telegram API ${method} failed: HTTP ${response.status} ${response.statusText}`,
+      );
     }
     const json = (await response.json()) as { ok: boolean; result?: T; description?: string };
     if (!json.ok) {

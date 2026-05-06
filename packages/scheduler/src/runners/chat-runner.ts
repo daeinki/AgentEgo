@@ -1,9 +1,6 @@
 import type { Contracts, StandardMessage } from '@agent-platform/core';
 import { generateId, generateTraceId, nowMs } from '@agent-platform/core';
-import type {
-  MessageHandler,
-  MessageHandlerContext,
-} from '@agent-platform/control-plane';
+import type { MessageHandler, MessageHandlerContext } from '@agent-platform/control-plane';
 import type { CronTask, TaskRunContext, TaskRunResult, TaskRunner } from '../types.js';
 
 export interface ChatTaskRunnerDeps {

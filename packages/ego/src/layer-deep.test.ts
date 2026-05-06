@@ -261,8 +261,12 @@ describe('EgoLayer deep path (integration)', () => {
     // rich enough to diagnose it.
     const llm: Contracts.EgoLlmAdapter = {
       async initialize() {},
-      async healthCheck() { return true; },
-      getModelInfo() { return { provider: 'mock', model: 'mock', isFallback: false }; },
+      async healthCheck() {
+        return true;
+      },
+      getModelInfo() {
+        return { provider: 'mock', model: 'mock', isFallback: false };
+      },
       async think() {
         return {
           judgment: { action: 'passthrough', confidence: 0.5, reason: 'r' },
@@ -272,7 +276,9 @@ describe('EgoLayer deep path (integration)', () => {
     };
     const events: Contracts.TraceEvent[] = [];
     const traceLogger: Contracts.TraceLogger = {
-      event(ev) { events.push(ev); },
+      event(ev) {
+        events.push(ev);
+      },
       async span(opts, fn) {
         this.event({
           traceId: opts.traceId,
@@ -311,8 +317,12 @@ describe('EgoLayer deep path (integration)', () => {
     // to the generic runtime-error fallback.
     const llm: Contracts.EgoLlmAdapter = {
       async initialize() {},
-      async healthCheck() { return true; },
-      getModelInfo() { return { provider: 'mock', model: 'mock', isFallback: false }; },
+      async healthCheck() {
+        return true;
+      },
+      getModelInfo() {
+        return { provider: 'mock', model: 'mock', isFallback: false };
+      },
       async think() {
         // Never resolves → withTimeout fires after maxDecisionTimeMs.
         return new Promise<EgoThinkingResult>(() => {
@@ -322,7 +332,9 @@ describe('EgoLayer deep path (integration)', () => {
     };
     const events: Contracts.TraceEvent[] = [];
     const traceLogger: Contracts.TraceLogger = {
-      event(ev) { events.push(ev); },
+      event(ev) {
+        events.push(ev);
+      },
       async span(opts, fn) {
         this.event({
           traceId: opts.traceId,

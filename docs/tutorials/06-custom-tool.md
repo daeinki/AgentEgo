@@ -1,6 +1,7 @@
 # Tutorial 06 — Custom Tool
 
 **목표**: 에이전트가 호출할 수 있는 커스텀 도구를 만들고 등록하기. 2가지 경로:
+
 1. 인라인 (코드에 직접 등록)
 2. 스킬 패키지 (레지스트리 경유)
 
@@ -13,11 +14,11 @@
 
 ```ts
 export interface AgentTool<A = unknown> {
-  readonly name: string;                    // 고유 식별자
-  readonly description: string;             // LLM 에게 보여줄 설명
-  readonly permissions: Permission[];       // 필요한 권한
+  readonly name: string; // 고유 식별자
+  readonly description: string; // LLM 에게 보여줄 설명
+  readonly permissions: Permission[]; // 필요한 권한
   readonly riskLevel: 'low' | 'medium' | 'high' | 'critical';
-  readonly inputSchema: Record<string, unknown>;  // JSON Schema
+  readonly inputSchema: Record<string, unknown>; // JSON Schema
   execute(args: A, ctx: ToolExecutionContext): Promise<ToolResult>;
 }
 ```
@@ -41,9 +42,7 @@ export function weatherTool(apiKey: string): AgentTool<WeatherArgs> {
     name: 'weather.lookup',
     description: 'Look up current weather for a city.',
     riskLevel: 'low',
-    permissions: [
-      { type: 'network', access: 'outbound', domains: ['api.openweathermap.org'] },
-    ],
+    permissions: [{ type: 'network', access: 'outbound', domains: ['api.openweathermap.org'] }],
     inputSchema: {
       type: 'object',
       required: ['city'],
@@ -100,16 +99,12 @@ export function weatherTool(apiKey: string): AgentTool<WeatherArgs> {
 import { InProcessSandbox, PolicyCapabilityGuard, ownerPolicy } from '@agent-platform/agent-worker';
 import { weatherTool } from './tools/weather.js';
 
-const tools = new Map([
-  ['weather.lookup', weatherTool(process.env.OPENWEATHER_KEY!)],
-]);
+const tools = new Map([['weather.lookup', weatherTool(process.env.OPENWEATHER_KEY!)]]);
 
 const sandbox = new InProcessSandbox(tools);
 
 // 세션 정책 설정 (owner 는 모든 low-risk tool 기본 허용)
-const policies = new Map([
-  ['session-1', ownerPolicy('session-1')],
-]);
+const policies = new Map([['session-1', ownerPolicy('session-1')]]);
 
 const guard = new PolicyCapabilityGuard(policies, tools);
 ```
@@ -157,9 +152,7 @@ export function createTools({ manifest, installDir }) {
       name: 'weather.lookup',
       description: manifest.description,
       riskLevel: 'low',
-      permissions: [
-        { type: 'network', access: 'outbound', domains: ['api.openweathermap.org'] },
-      ],
+      permissions: [{ type: 'network', access: 'outbound', domains: ['api.openweathermap.org'] }],
       inputSchema: {
         type: 'object',
         required: ['city'],
@@ -172,7 +165,12 @@ export function createTools({ manifest, installDir }) {
         // ... weather 로직 (환경 변수에서 apiKey 읽기)
         const key = process.env.OPENWEATHER_KEY;
         if (!key) {
-          return { toolName: 'weather.lookup', success: false, error: 'OPENWEATHER_KEY missing', durationMs: 0 };
+          return {
+            toolName: 'weather.lookup',
+            success: false,
+            error: 'OPENWEATHER_KEY missing',
+            durationMs: 0,
+          };
         }
         // ... (weatherTool 의 body 와 동일)
         return { toolName: 'weather.lookup', success: true, output: 'stub', durationMs: 1 };
@@ -218,6 +216,7 @@ console.log(result);
 ```
 
 출력:
+
 ```
 {
   skillId: 'weather-skill',
@@ -234,7 +233,7 @@ import { LocalSkillRegistry, mountInstalledSkills } from '@agent-platform/skills
 
 const registry = new LocalSkillRegistry({
   installRoot: process.env.HOME + '/.agent/skills',
-  searchPaths: [],  // 설치만 확인
+  searchPaths: [], // 설치만 확인
 });
 
 const { tools: skillTools, errors } = await mountInstalledSkills(registry);
@@ -272,6 +271,7 @@ console.log(v);
 ```
 
 출력:
+
 ```
 {
   skillId: 'weather-skill',
@@ -289,11 +289,12 @@ console.log(v);
 const registry = new LocalSkillRegistry({
   installRoot: '~/.agent/skills',
   searchPaths: ['./skills'],
-  signingSecret: process.env.SKILL_SIGNING_SECRET,  // HMAC 키
+  signingSecret: process.env.SKILL_SIGNING_SECRET, // HMAC 키
 });
 ```
 
 `buildManifest()` 에도 같은 secret 전달:
+
 ```ts
 const manifest = await buildManifest(dir, {...}, secret);
 ```
@@ -307,10 +308,8 @@ const manifest = await buildManifest(dir, {...}, secret);
 ```ts
 import { DockerSandbox, DockerContainerRuntime, bashTool } from '@agent-platform/agent-worker';
 
-const runtime = new DockerContainerRuntime();  // 시스템 docker CLI 사용
-const dockerTools = new Map([
-  ['bash.run', bashTool({ memoryMb: 256, networkEnabled: false })],
-]);
+const runtime = new DockerContainerRuntime(); // 시스템 docker CLI 사용
+const dockerTools = new Map([['bash.run', bashTool({ memoryMb: 256, networkEnabled: false })]]);
 
 const sandbox = new DockerSandbox(dockerTools, {
   defaultImage: 'alpine:latest',
@@ -325,6 +324,7 @@ await sandbox.release(instance);
 ```
 
 Docker 이미지 사전 pull 필요:
+
 ```bash
 docker pull alpine:latest
 ```

@@ -42,12 +42,7 @@ export class AppRootEl extends LitElement {
     super();
     this.gateway = new GatewayController(this);
     this.phase = new PhaseController(this, this.gateway);
-    this.chat = new ChatController(
-      this,
-      this.gateway,
-      this.phase,
-      resolveConversationId(),
-    );
+    this.chat = new ChatController(this, this.gateway, this.phase, resolveConversationId());
     this.polling = new PollingController(this, this.gateway);
     this.viewState = new ViewStateController(this);
 
@@ -107,15 +102,15 @@ export class AppRootEl extends LitElement {
       >
 app-root mounted but controllers are not initialized.
 Open the browser console for the underlying error.
-      </pre>`;
+      </pre
+      >`;
     }
     const enrolled = this.gateway.enrolled;
     return html`
       <app-header
         .status=${this.gateway.status}
         .theme=${this.viewState.theme}
-        @theme-change=${(e: CustomEvent<ThemePreference>) =>
-          this.viewState.setTheme(e.detail)}
+        @theme-change=${(e: CustomEvent<ThemePreference>) => this.viewState.setTheme(e.detail)}
       ></app-header>
       <div class="layout">
         <app-sidebar
@@ -154,9 +149,7 @@ Open the browser console for the underlying error.
       case 'channels':
         return html`<view-channels .channels=${this.polling.channels}></view-channels>`;
       case 'instances':
-        return html`<view-instances
-          .instances=${this.polling.instances}
-        ></view-instances>`;
+        return html`<view-instances .instances=${this.polling.instances}></view-instances>`;
       case 'sessions':
         return html`<view-sessions .sessions=${this.polling.sessions}></view-sessions>`;
       case 'cron':

@@ -29,6 +29,8 @@
     "@whiskeysockets/baileys": ">=6.0.0"
   },
   "peerDependenciesMeta": {
-    "@whiskeysockets/baileys": { "optional": true }
+    "@whiskeysockets/baileys": {
+      "optional": true
+    }
   }
 }

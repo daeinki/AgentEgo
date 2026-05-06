@@ -46,7 +46,10 @@ export function countSequentialConnectors(text: string): number {
 const CLAUSE_SPLIT = /[,.!?;]|그리고|하지만|그런데|그러나/g;
 
 export function countClauses(text: string): number {
-  const parts = text.split(CLAUSE_SPLIT).map((s) => s.trim()).filter(Boolean);
+  const parts = text
+    .split(CLAUSE_SPLIT)
+    .map((s) => s.trim())
+    .filter(Boolean);
   return Math.max(1, parts.length);
 }
 

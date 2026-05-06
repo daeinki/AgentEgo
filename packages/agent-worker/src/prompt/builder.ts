@@ -39,9 +39,7 @@ export class PromptBuilder {
         parts.push(`## EGO 맥락\n${ctx.egoEnrichment.addContext}`);
       }
       if (ctx.egoEnrichment.memories?.length) {
-        parts.push(
-          `## 관련 기억\n${ctx.egoEnrichment.memories.map((m) => `- ${m}`).join('\n')}`,
-        );
+        parts.push(`## 관련 기억\n${ctx.egoEnrichment.memories.map((m) => `- ${m}`).join('\n')}`);
       }
       if (ctx.egoEnrichment.addInstructions) {
         parts.push(`## EGO 지시\n${ctx.egoEnrichment.addInstructions}`);

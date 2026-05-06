@@ -14,18 +14,7 @@
  *   X1 — Memory (PalaceMemorySystem search/ingest)
  *   S1 — Sandbox (acquire/release/execute)
  */
-export type TraceBlock =
-  | 'G3'
-  | 'C1'
-  | 'P1'
-  | 'E1'
-  | 'W1'
-  | 'R1'
-  | 'R2'
-  | 'R3'
-  | 'M1'
-  | 'X1'
-  | 'S1';
+export type TraceBlock = 'G3' | 'C1' | 'P1' | 'E1' | 'W1' | 'R1' | 'R2' | 'R3' | 'M1' | 'X1' | 'S1';
 
 /** A single recorded event inside a traced turn. */
 export interface TraceEvent {

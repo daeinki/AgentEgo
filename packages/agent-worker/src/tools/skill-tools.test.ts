@@ -25,7 +25,8 @@ export function createTools() {
   });
 
   it('rejects new Function()', () => {
-    const src = 'export function createTools(){ const f = new Function("x", "return x"); return []; }';
+    const src =
+      'export function createTools(){ const f = new Function("x", "return x"); return []; }';
     const r = staticCheckSource(src);
     expect(r.ok).toBe(false);
   });

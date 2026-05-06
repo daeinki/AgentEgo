@@ -92,4 +92,3 @@ export async function sendCommand(messageText: string, options: SendOptions): Pr
     sessionStore.close();
   }
 }
-

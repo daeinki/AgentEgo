@@ -88,10 +88,8 @@ export class ChatBubbleEl extends LitElement {
   }
 
   override render() {
-    const meta =
-      this.role === 'user' ? 'You' : this.role === 'assistant' ? 'Assistant' : 'System';
-    const renderedHtml =
-      this.role === 'user' ? null : renderMarkdown(this.text || '');
+    const meta = this.role === 'user' ? 'You' : this.role === 'assistant' ? 'Assistant' : 'System';
+    const renderedHtml = this.role === 'user' ? null : renderMarkdown(this.text || '');
     return html`
       <div>
         <div class="meta">${meta}</div>

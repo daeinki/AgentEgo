@@ -77,7 +77,9 @@ function makeCtx(overrides: Partial<Contracts.ReasoningContext> = {}): Contracts
   };
 }
 
-async function collect(iter: AsyncIterable<Contracts.ReasoningEvent>): Promise<Contracts.ReasoningEvent[]> {
+async function collect(
+  iter: AsyncIterable<Contracts.ReasoningEvent>,
+): Promise<Contracts.ReasoningEvent[]> {
   const out: Contracts.ReasoningEvent[] = [];
   for await (const ev of iter) out.push(ev);
   return out;
@@ -89,7 +91,9 @@ describe('ReactExecutor', () => {
     const ex = new ReactExecutor(model);
     const events = await collect(ex.run(makeCtx()));
 
-    const deltas = events.filter((e) => e.kind === 'delta').map((e) => (e as { text: string }).text);
+    const deltas = events
+      .filter((e) => e.kind === 'delta')
+      .map((e) => (e as { text: string }).text);
     expect(deltas.join('')).toBe('hello');
 
     const usage = events.find((e) => e.kind === 'usage');
@@ -153,7 +157,10 @@ describe('ReactExecutor', () => {
     );
 
     expect(calls).toEqual(['echo:{"x":1}']);
-    const final = events.find((e) => e.kind === 'final') as { text: string; state: { trace: { kind: string }[] } };
+    const final = events.find((e) => e.kind === 'final') as {
+      text: string;
+      state: { trace: { kind: string }[] };
+    };
     expect(final.text).toBe('done.');
     const kinds = final.state.trace.map((s) => s.kind);
     expect(kinds).toContain('tool_call');
@@ -162,10 +169,19 @@ describe('ReactExecutor', () => {
   });
 
   it('enforces maxToolCalls budget by setting terminationReason to tool_exhaustion', async () => {
-    const guard: Contracts.CapabilityGuard = { async check() { return { allowed: true }; } };
+    const guard: Contracts.CapabilityGuard = {
+      async check() {
+        return { allowed: true };
+      },
+    };
     const sandbox: Contracts.ToolSandbox = {
       async acquire() {
-        return { id: 'sb-1', status: 'ready', startedAt: nowMs(), resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } };
+        return {
+          id: 'sb-1',
+          status: 'ready',
+          startedAt: nowMs(),
+          resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 },
+        };
       },
       async execute(_sb, name) {
         return { toolName: name, success: true, output: 'ok', durationMs: 1 };
@@ -196,7 +212,9 @@ describe('ReactExecutor', () => {
         }),
       ),
     );
-    const final = events.find((e) => e.kind === 'final') as { state: { terminationReason: string } };
+    const final = events.find((e) => e.kind === 'final') as {
+      state: { terminationReason: string };
+    };
     expect(final.state.terminationReason).toBe('tool_exhaustion');
   });
 
@@ -206,7 +224,9 @@ describe('ReactExecutor', () => {
     const model = new TextOnlyAdapter(['never seen']);
     const ex = new ReactExecutor(model);
     const events = await collect(ex.run(makeCtx({ abortSignal: ac.signal })));
-    const final = events.find((e) => e.kind === 'final') as { state: { terminationReason: string } };
+    const final = events.find((e) => e.kind === 'final') as {
+      state: { terminationReason: string };
+    };
     expect(final.state.terminationReason).toBe('user_abort');
   });
 });

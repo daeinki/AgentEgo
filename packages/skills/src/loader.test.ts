@@ -34,9 +34,7 @@ describe('assertSafeEntryPoint (U10 Phase 5.1)', () => {
   });
 
   it('rejects POSIX absolute paths', () => {
-    expect(() => assertSafeEntryPoint(INSTALL, '/etc/passwd')).toThrow(
-      /must be a relative path/,
-    );
+    expect(() => assertSafeEntryPoint(INSTALL, '/etc/passwd')).toThrow(/must be a relative path/);
   });
 
   it('rejects Windows drive-absolute paths', () => {

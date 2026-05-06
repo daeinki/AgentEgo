@@ -51,18 +51,10 @@ export {
 } from './lifecycle/pidfile.js';
 export type { PidRecord } from './lifecycle/pidfile.js';
 
-export {
-  AlreadyRunningError,
-  defaultDaemonCommand,
-  detachGateway,
-} from './lifecycle/detach.js';
+export { AlreadyRunningError, defaultDaemonCommand, detachGateway } from './lifecycle/detach.js';
 export type { DetachOptions, DetachResult } from './lifecycle/detach.js';
 
-export {
-  currentPlatform,
-  defaultServiceLabel,
-  resolveServiceAdapter,
-} from './service/resolve.js';
+export { currentPlatform, defaultServiceLabel, resolveServiceAdapter } from './service/resolve.js';
 export type {
   InstallOptions,
   ServiceAdapter,

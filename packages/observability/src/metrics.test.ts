@@ -26,8 +26,22 @@ function turnMetrics(overrides: Partial<TurnMetrics> = {}): TurnMetrics {
 describe('InMemoryMetricsSink', () => {
   it('records turn totals', () => {
     const sink = new InMemoryMetricsSink();
-    sink.recordTurn(turnMetrics({ inputTokens: 10, outputTokens: 5, estimatedCostUsd: 0.01, totalLatencyMs: 1000 }));
-    sink.recordTurn(turnMetrics({ inputTokens: 20, outputTokens: 10, estimatedCostUsd: 0.02, totalLatencyMs: 500 }));
+    sink.recordTurn(
+      turnMetrics({
+        inputTokens: 10,
+        outputTokens: 5,
+        estimatedCostUsd: 0.01,
+        totalLatencyMs: 1000,
+      }),
+    );
+    sink.recordTurn(
+      turnMetrics({
+        inputTokens: 20,
+        outputTokens: 10,
+        estimatedCostUsd: 0.02,
+        totalLatencyMs: 500,
+      }),
+    );
     const snap = sink.snapshot();
     expect(snap.turns).toBe(2);
     expect(snap.totalInputTokens).toBe(30);
@@ -39,9 +53,21 @@ describe('InMemoryMetricsSink', () => {
   it('records EGO decisions with fast-exit ratio', () => {
     const sink = new InMemoryMetricsSink();
     for (let i = 0; i < 3; i += 1) {
-      sink.recordEgoDecision({ fastExit: true, action: 'passthrough', confidence: 1, costUsd: 0, pipelineMs: 10 });
+      sink.recordEgoDecision({
+        fastExit: true,
+        action: 'passthrough',
+        confidence: 1,
+        costUsd: 0,
+        pipelineMs: 10,
+      });
     }
-    sink.recordEgoDecision({ fastExit: false, action: 'enrich', confidence: 0.8, costUsd: 0.002, pipelineMs: 1500 });
+    sink.recordEgoDecision({
+      fastExit: false,
+      action: 'enrich',
+      confidence: 0.8,
+      costUsd: 0.002,
+      pipelineMs: 1500,
+    });
     const snap = sink.snapshot();
     expect(snap.egoDecisions).toBe(4);
     expect(snap.egoFastExits).toBe(3);

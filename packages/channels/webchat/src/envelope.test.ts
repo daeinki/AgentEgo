@@ -3,7 +3,9 @@ import { decodeBrowserInbound, encodeBrowserOutbound } from './envelope.js';
 
 describe('browser envelopes', () => {
   it('decodes a valid say envelope', () => {
-    const res = decodeBrowserInbound(JSON.stringify({ type: 'say', text: 'hi', clientMessageId: 'c1' }));
+    const res = decodeBrowserInbound(
+      JSON.stringify({ type: 'say', text: 'hi', clientMessageId: 'c1' }),
+    );
     expect('error' in res).toBe(false);
     if (!('error' in res)) {
       expect(res.type).toBe('say');

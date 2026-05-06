@@ -35,7 +35,12 @@ export interface ComplexityRouter {
 export type ReasoningEvent =
   | { kind: 'step'; step: ReasoningStep }
   | { kind: 'delta'; text: string }
-  | { kind: 'step_progress'; stepId: string; goal: string; status: 'running' | 'success' | 'failed' }
+  | {
+      kind: 'step_progress';
+      stepId: string;
+      goal: string;
+      status: 'running' | 'success' | 'failed';
+    }
   | { kind: 'usage'; inputTokens: number; outputTokens: number; cost?: number }
   | { kind: 'final'; text: string; state: ReasoningState };
 
@@ -44,7 +49,12 @@ export interface ReasoningContext {
   agentId: string;
   userMessage: StandardMessage;
   systemPrompt: string;
-  priorMessages: { role: 'user' | 'assistant' | 'tool'; content: string; toolCallId?: string; toolName?: string }[];
+  priorMessages: {
+    role: 'user' | 'assistant' | 'tool';
+    content: string;
+    toolCallId?: string;
+    toolName?: string;
+  }[];
   availableTools: ToolDescriptor[];
   budget?: ReasoningBudget;
   egoDecisionId: string | null;

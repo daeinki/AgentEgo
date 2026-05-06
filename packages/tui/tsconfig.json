@@ -6,8 +6,5 @@
     "jsx": "react-jsx"
   },
   "include": ["src"],
-  "references": [
-    { "path": "../core" },
-    { "path": "../gateway-cli" }
-  ]
+  "references": [{ "path": "../core" }, { "path": "../gateway-cli" }]
 }

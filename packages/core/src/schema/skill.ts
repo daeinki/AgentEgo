@@ -10,11 +10,7 @@ export const SkillMetadata = Type.Object({
   signature: Type.Optional(Type.String()),
   permissions: Type.Array(Permission),
   riskAssessment: Type.Object({
-    staticAnalysis: Type.Union([
-      Type.Literal('pass'),
-      Type.Literal('warn'),
-      Type.Literal('fail'),
-    ]),
+    staticAnalysis: Type.Union([Type.Literal('pass'), Type.Literal('warn'), Type.Literal('fail')]),
     knownVulnerabilities: Type.Array(Type.String()),
   }),
 });

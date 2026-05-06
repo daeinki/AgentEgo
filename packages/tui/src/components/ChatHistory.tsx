@@ -21,11 +21,7 @@ export interface ChatTurn {
  * still render <Static> internally via this component's tree).
  */
 export function ChatHistory({ completed }: { completed: ChatTurn[] }): React.JSX.Element {
-  return (
-    <Static items={completed}>
-      {(turn) => <TurnView key={turn.id} turn={turn} />}
-    </Static>
-  );
+  return <Static items={completed}>{(turn) => <TurnView key={turn.id} turn={turn} />}</Static>;
 }
 
 /**
@@ -35,10 +31,8 @@ export function ChatHistory({ completed }: { completed: ChatTurn[] }): React.JSX
  * layout semantics.
  */
 export function TurnView({ turn }: { turn: ChatTurn }): React.JSX.Element {
-  const tag =
-    turn.role === 'user' ? 'you' : turn.role === 'assistant' ? 'agent' : 'system';
-  const tagColor =
-    turn.role === 'user' ? 'cyan' : turn.role === 'assistant' ? 'green' : 'yellow';
+  const tag = turn.role === 'user' ? 'you' : turn.role === 'assistant' ? 'agent' : 'system';
+  const tagColor = turn.role === 'user' ? 'cyan' : turn.role === 'assistant' ? 'green' : 'yellow';
 
   return (
     <Box flexDirection="column" marginBottom={1} paddingX={1}>

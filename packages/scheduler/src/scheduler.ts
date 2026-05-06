@@ -1,11 +1,5 @@
 import cron, { type ScheduledTask } from 'node-cron';
-import type {
-  CronTask,
-  CronTaskType,
-  TaskHistory,
-  TaskRunResult,
-  TaskRunner,
-} from './types.js';
+import type { CronTask, CronTaskType, TaskHistory, TaskRunResult, TaskRunner } from './types.js';
 
 /**
  * Read-only descriptor shape surfaced over RPC `cron.list`. Matches
@@ -90,7 +84,9 @@ export class SchedulerService implements SchedulerHandle {
     for (const task of this.tasks.values()) {
       if (!task.enabled) continue;
       if (!this.runners[task.type]) {
-        throw new Error(`[scheduler] no runner registered for type '${task.type}' (task=${task.id})`);
+        throw new Error(
+          `[scheduler] no runner registered for type '${task.type}' (task=${task.id})`,
+        );
       }
       if (!cron.validate(task.spec)) {
         throw new Error(`[scheduler] invalid cron spec for task '${task.id}': ${task.spec}`);

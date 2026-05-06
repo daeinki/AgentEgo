@@ -53,10 +53,7 @@ function expandHome(p: string): string {
   return p;
 }
 
-export function buildSystemPrompt(
-  base: string,
-  persona?: PersonaSnapshot,
-): string {
+export function buildSystemPrompt(base: string, persona?: PersonaSnapshot): string {
   if (!persona) return base;
   return `${base}\n\n## 당신의 성격\n${persona.summary}\n`;
 }

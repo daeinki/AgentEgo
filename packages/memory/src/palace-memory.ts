@@ -80,7 +80,13 @@ export class PalaceMemorySystem implements MemorySystem {
   ): Promise<MemorySearchResult[]> {
     this.assertReady();
     const startedAt = Date.now();
-    const hits = await hybridSearchDetailed(query, ctx, this.store, this.embedder, this.hybridWeights);
+    const hits = await hybridSearchDetailed(
+      query,
+      ctx,
+      this.store,
+      this.embedder,
+      this.hybridWeights,
+    );
     // Access logging: bump each returned chunk's access_count + append a
     // memory_access_log row. Enabled by default; `AGENT_MEMORY_ACCESS_LOG=0`
     // (or `='false'` / `='off'`) disables — useful when a caller wants read
@@ -117,10 +123,7 @@ export class PalaceMemorySystem implements MemorySystem {
     return hits.map((h) => h.result);
   }
 
-  async ingest(
-    turn: ConversationTurn,
-    trace?: Contracts.TraceCallContext,
-  ): Promise<IngestResult> {
+  async ingest(turn: ConversationTurn, trace?: Contracts.TraceCallContext): Promise<IngestResult> {
     this.assertReady();
     const startedAt = Date.now();
     const result = await ingestTurn(turn, {

@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  EmbedderStepMatcher,
-  cosineSimilarity,
-  type EmbedFn,
-} from './step-matcher.js';
+import { EmbedderStepMatcher, cosineSimilarity, type EmbedFn } from './step-matcher.js';
 
 describe('cosineSimilarity', () => {
   it('returns 1 for identical vectors', () => {
@@ -25,9 +21,9 @@ describe('cosineSimilarity', () => {
   });
 
   it('throws on length mismatch', () => {
-    expect(() =>
-      cosineSimilarity(new Float32Array([1, 2]), new Float32Array([1, 2, 3])),
-    ).toThrow(/length mismatch/);
+    expect(() => cosineSimilarity(new Float32Array([1, 2]), new Float32Array([1, 2, 3]))).toThrow(
+      /length mismatch/,
+    );
   });
 });
 

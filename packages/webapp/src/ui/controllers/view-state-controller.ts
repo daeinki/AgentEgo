@@ -44,7 +44,7 @@ export class ViewStateController implements ReactiveController {
     // hash on the URL.
     const stored = readJSON<ViewId>(KEY_VIEW);
     const fromHash = parseHashView();
-    this.view = window.location.hash ? fromHash : stored ?? 'chat';
+    this.view = window.location.hash ? fromHash : (stored ?? 'chat');
     if (!window.location.hash) {
       window.location.hash = `#/${this.view}`;
     }

@@ -9,11 +9,7 @@ import { generateTraceId } from '@agent-platform/core';
 import { RateLimiter, type RateLimiterConfig } from './rate-limiter.js';
 import { TokenAuth, type AuthConfig } from './auth.js';
 import { DeviceAuthStore } from './device-auth.js';
-import {
-  encodeOutbound,
-  parseInbound,
-  type OutboundEnvelope,
-} from './envelope.js';
+import { encodeOutbound, parseInbound, type OutboundEnvelope } from './envelope.js';
 import { SessionStore } from '../session/store.js';
 
 /**
@@ -125,9 +121,7 @@ export class ApiGateway {
         return;
       }
       const authHeader = req.headers['authorization'];
-      let decision = this.auth.verifyBearer(
-        Array.isArray(authHeader) ? authHeader[0] : authHeader,
-      );
+      let decision = this.auth.verifyBearer(Array.isArray(authHeader) ? authHeader[0] : authHeader);
       if (!decision.ok) {
         // Browser WebSocket API can't set Authorization; accept a fallback
         // carried via Sec-WebSocket-Protocol as `bearer.<token>`. We then
@@ -394,10 +388,7 @@ export class ApiGateway {
 
   // ─── Device-auth routes ───────────────────────────────────────────────
 
-  private async handleDeviceEnroll(
-    req: IncomingMessage,
-    res: ServerResponse,
-  ): Promise<void> {
+  private async handleDeviceEnroll(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const body = await readBody(req);
     let parsed: { publicKeyHex?: unknown; name?: unknown };
     try {
@@ -405,8 +396,7 @@ export class ApiGateway {
     } catch {
       return sendJson(res, 400, { error: 'invalid JSON' });
     }
-    const publicKeyHex =
-      typeof parsed.publicKeyHex === 'string' ? parsed.publicKeyHex : '';
+    const publicKeyHex = typeof parsed.publicKeyHex === 'string' ? parsed.publicKeyHex : '';
     const name = typeof parsed.name === 'string' ? parsed.name : 'browser';
     try {
       const device = this.config.devices!.enroll(publicKeyHex, name);
@@ -420,10 +410,7 @@ export class ApiGateway {
     }
   }
 
-  private async handleDeviceChallenge(
-    req: IncomingMessage,
-    res: ServerResponse,
-  ): Promise<void> {
+  private async handleDeviceChallenge(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const body = await readBody(req);
     let parsed: { deviceId?: unknown };
     try {
@@ -436,10 +423,7 @@ export class ApiGateway {
     return sendJson(res, 200, issued);
   }
 
-  private async handleDeviceAssert(
-    req: IncomingMessage,
-    res: ServerResponse,
-  ): Promise<void> {
+  private async handleDeviceAssert(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const body = await readBody(req);
     let parsed: {
       deviceId?: unknown;

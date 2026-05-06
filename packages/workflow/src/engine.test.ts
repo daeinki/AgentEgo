@@ -5,7 +5,10 @@ import type { Workflow } from './schema.js';
 class RecordingTools implements WorkflowToolAdapter {
   public calls: Array<{ name: string; args: unknown }> = [];
   constructor(
-    private readonly response: (name: string, args: unknown) => {
+    private readonly response: (
+      name: string,
+      args: unknown,
+    ) => {
       success: boolean;
       output?: string;
       error?: string;
@@ -228,9 +231,7 @@ describe('executeWorkflow — functions (call / return)', () => {
       entry: {
         id: 'main',
         kind: 'sequence',
-        steps: [
-          { id: 'c', kind: 'call', function: 'double', args: { n: 4 }, saveAs: 'r' },
-        ],
+        steps: [{ id: 'c', kind: 'call', function: 'double', args: { n: 4 }, saveAs: 'r' }],
       },
       functions: {
         double: {

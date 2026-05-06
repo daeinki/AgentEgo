@@ -96,7 +96,9 @@ describe('OpenAIAdapter — responseFormat passthrough', () => {
       event(e: { block: string; event: string; summary?: string; payload?: unknown }) {
         events.push({ block: e.block, event: e.event, summary: e.summary, payload: e.payload });
       },
-      async span<T>(_o: unknown, fn: () => Promise<T>) { return fn(); },
+      async span<T>(_o: unknown, fn: () => Promise<T>) {
+        return fn();
+      },
       async close() {},
     };
 

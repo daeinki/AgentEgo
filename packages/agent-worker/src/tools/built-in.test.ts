@@ -7,7 +7,10 @@ import { InProcessSandbox } from './sandbox.js';
 import type { AgentTool } from './types.js';
 import { ownerPolicy } from '../security/capability-guard.js';
 
-async function runDirectly<A>(tool: AgentTool<A>, args: A): Promise<ReturnType<AgentTool<A>['execute']>> {
+async function runDirectly<A>(
+  tool: AgentTool<A>,
+  args: A,
+): Promise<ReturnType<AgentTool<A>['execute']>> {
   const controller = new AbortController();
   return tool.execute(args, {
     sessionId: 's',
@@ -197,7 +200,12 @@ describe('InProcessSandbox', () => {
     const tool = fsReadTool([tmpdir()]);
     const box = new InProcessSandbox(new Map([[tool.name, tool]]));
     const res = await box.execute(
-      { id: 'fake', status: 'ready', startedAt: 0, resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } },
+      {
+        id: 'fake',
+        status: 'ready',
+        startedAt: 0,
+        resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 },
+      },
       'fs.read',
       { path: '/tmp/x' },
       1000,

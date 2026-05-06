@@ -1,11 +1,6 @@
 import type { StandardMessage } from '@agent-platform/core';
 import { nowMs } from '@agent-platform/core';
-import type {
-  BusEntry,
-  MessageBus,
-  SubscribeOptions,
-  Subscription,
-} from './bus.js';
+import type { BusEntry, MessageBus, SubscribeOptions, Subscription } from './bus.js';
 
 interface SubjectBuffer {
   entries: BusEntry[];
@@ -111,7 +106,11 @@ export class InProcessBus implements MessageBus {
   /**
    * Snapshot — useful for tests/inspection. Not part of the MessageBus contract.
    */
-  peek(subject: string): { entries: number; pending: number; groupOffsets: Record<string, number> } {
+  peek(subject: string): {
+    entries: number;
+    pending: number;
+    groupOffsets: Record<string, number>;
+  } {
     const buffer = this.subjects.get(subject);
     if (!buffer) return { entries: 0, pending: 0, groupOffsets: {} };
     return {

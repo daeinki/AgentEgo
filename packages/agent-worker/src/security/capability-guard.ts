@@ -28,11 +28,7 @@ export class PolicyCapabilityGuard implements CapabilityGuard {
     private readonly tools: Map<string, AgentTool>,
   ) {}
 
-  async check(
-    sessionId: string,
-    toolName: string,
-    _args: unknown,
-  ): Promise<CapabilityDecision> {
+  async check(sessionId: string, toolName: string, _args: unknown): Promise<CapabilityDecision> {
     const policy = this.policies.get(sessionId);
     if (!policy) {
       return { allowed: false, reason: 'no policy for session', suggestEscalation: true };

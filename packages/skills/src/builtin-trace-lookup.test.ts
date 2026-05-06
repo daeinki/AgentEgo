@@ -5,9 +5,7 @@ import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
 
-const BUILTIN_DIR = resolve(
-  fileURLToPath(new URL('../builtin/trace-lookup', import.meta.url)),
-);
+const BUILTIN_DIR = resolve(fileURLToPath(new URL('../builtin/trace-lookup', import.meta.url)));
 const ENTRY = resolve(BUILTIN_DIR, 'index.js');
 
 // Real CREATE TABLE mirrored from packages/observability/src/sqlite-trace-log.ts.
@@ -35,7 +33,10 @@ interface LoadedTool {
   name: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
-  execute(args: unknown, ctx?: unknown): Promise<{
+  execute(
+    args: unknown,
+    ctx?: unknown,
+  ): Promise<{
     toolName: string;
     success: boolean;
     output?: string;
@@ -57,18 +58,68 @@ function seedFixture(dbPath: string): { t0: number; t1: number; t2: number } {
   );
   // trc-A: session s1, clean turn (oldest)
   const t0 = Date.now() - 60_000;
-  ins.run('trc-A', 's1', 'agent-1', 'G3', 'enter', t0, null, JSON.stringify({ textPreview: 'hello world' }), null);
-  ins.run('trc-A', 's1', 'agent-1', 'E1', 'decision', t0 + 10, 4, JSON.stringify({ action: 'tool_use', confidence: 0.9 }), null);
-  ins.run('trc-A', 's1', 'agent-1', 'W1', 'tool_call', t0 + 20, 90, JSON.stringify({ toolName: 'bash', success: true }), null);
+  ins.run(
+    'trc-A',
+    's1',
+    'agent-1',
+    'G3',
+    'enter',
+    t0,
+    null,
+    JSON.stringify({ textPreview: 'hello world' }),
+    null,
+  );
+  ins.run(
+    'trc-A',
+    's1',
+    'agent-1',
+    'E1',
+    'decision',
+    t0 + 10,
+    4,
+    JSON.stringify({ action: 'tool_use', confidence: 0.9 }),
+    null,
+  );
+  ins.run(
+    'trc-A',
+    's1',
+    'agent-1',
+    'W1',
+    'tool_call',
+    t0 + 20,
+    90,
+    JSON.stringify({ toolName: 'bash', success: true }),
+    null,
+  );
 
   // trc-B: session s1, with an error (middle)
   const t1 = Date.now() - 10_000;
-  ins.run('trc-B', 's1', 'agent-1', 'G3', 'enter', t1, null, JSON.stringify({ textPreview: 'second turn' }), null);
+  ins.run(
+    'trc-B',
+    's1',
+    'agent-1',
+    'G3',
+    'enter',
+    t1,
+    null,
+    JSON.stringify({ textPreview: 'second turn' }),
+    null,
+  );
   ins.run('trc-B', 's1', 'agent-1', 'W1', 'error', t1 + 5, 3, null, 'boom');
 
   // trc-C: session s2 (newest)
   const t2 = Date.now() - 1_000;
-  ins.run('trc-C', 's2', 'agent-1', 'G3', 'enter', t2, null, JSON.stringify({ textPreview: 'other session' }), null);
+  ins.run(
+    'trc-C',
+    's2',
+    'agent-1',
+    'G3',
+    'enter',
+    t2,
+    null,
+    JSON.stringify({ textPreview: 'other session' }),
+    null,
+  );
   db.close();
   return { t0, t1, t2 };
 }
@@ -178,9 +229,7 @@ describe('builtin trace-lookup skill', () => {
     });
 
     it('applies blockFilter', async () => {
-      const res = await tools
-        .get('trace.show')!
-        .execute({ traceId: 'trc-A', blockFilter: ['E1'] });
+      const res = await tools.get('trace.show')!.execute({ traceId: 'trc-A', blockFilter: ['E1'] });
       expect(res.success).toBe(true);
       const out = res.output ?? '';
       expect(out).toContain('E1');
@@ -248,9 +297,7 @@ describe('builtin trace-lookup skill', () => {
       }
       busyDb.close();
 
-      const res = await tools
-        .get('trace.show')!
-        .execute({ traceId: 'trc-BUSY', maxEvents: 2 });
+      const res = await tools.get('trace.show')!.execute({ traceId: 'trc-BUSY', maxEvents: 2 });
       expect(res.success).toBe(true);
       expect(res.output ?? '').toContain('truncated, 3 more event');
     });

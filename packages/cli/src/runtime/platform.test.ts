@@ -3,16 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import WebSocket from 'ws';
-import type {
-  Contracts,
-  EgoFullConfig,
-  EgoThinkingResult,
-} from '@agent-platform/core';
-import type {
-  CompletionRequest,
-  ModelAdapter,
-  StreamChunk,
-} from '@agent-platform/agent-worker';
+import type { Contracts, EgoFullConfig, EgoThinkingResult } from '@agent-platform/core';
+import type { CompletionRequest, ModelAdapter, StreamChunk } from '@agent-platform/agent-worker';
 import { startPlatform, type PlatformHandles } from './platform.js';
 
 class ScriptedModel implements ModelAdapter {
@@ -231,7 +223,12 @@ class CapturingReasoner implements Contracts.Reasoner {
     yield {
       kind: 'final',
       text: 'captured',
-      state: { mode: 'react', egoDecisionId: ctx.egoDecisionId, trace: [], budget: { maxSteps: 8, maxToolCalls: 16, spent: { steps: 0, toolCalls: 0 } } },
+      state: {
+        mode: 'react',
+        egoDecisionId: ctx.egoDecisionId,
+        trace: [],
+        budget: { maxSteps: 8, maxToolCalls: 16, spent: { steps: 0, toolCalls: 0 } },
+      },
     };
     yield { kind: 'usage', inputTokens: 1, outputTokens: 1, cost: 0 };
   }

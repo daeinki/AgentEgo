@@ -51,9 +51,7 @@ export class ViewCronEl extends LitElement {
     return html`
       <h1>Cron Jobs</h1>
       ${this.tasks.length === 0
-        ? html`<p class="empty">
-            No scheduled tasks — cron scheduler is not configured.
-          </p>`
+        ? html`<p class="empty">No scheduled tasks — cron scheduler is not configured.</p>`
         : html`
             <table>
               <thead>
@@ -72,16 +70,8 @@ export class ViewCronEl extends LitElement {
                       <td class="mono">${t.id}</td>
                       <td class="mono">${t.spec}</td>
                       <td>${t.status}</td>
-                      <td>
-                        ${t.nextRunAt
-                          ? new Date(t.nextRunAt).toLocaleString()
-                          : '—'}
-                      </td>
-                      <td>
-                        ${t.lastRunAt
-                          ? new Date(t.lastRunAt).toLocaleString()
-                          : '—'}
-                      </td>
+                      <td>${t.nextRunAt ? new Date(t.nextRunAt).toLocaleString() : '—'}</td>
+                      <td>${t.lastRunAt ? new Date(t.lastRunAt).toLocaleString() : '—'}</td>
                     </tr>
                   `,
                 )}

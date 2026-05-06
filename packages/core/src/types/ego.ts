@@ -12,10 +12,7 @@ export type EgoState = Static<typeof EgoState>;
 
 // ─── EGO LLM config ────────────────────────────────────────────────────────
 
-export const EgoLlmProvider = Type.Union([
-  Type.Literal('anthropic'),
-  Type.Literal('openai'),
-]);
+export const EgoLlmProvider = Type.Union([Type.Literal('anthropic'), Type.Literal('openai')]);
 export type EgoLlmProvider = Static<typeof EgoLlmProvider>;
 
 export const EgoLlmConfig = Type.Object({

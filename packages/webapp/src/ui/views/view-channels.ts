@@ -91,11 +91,7 @@ export class ViewChannelsEl extends LitElement {
                           : ''}
                       </td>
                       <td>${c.sessionCount ?? '—'}</td>
-                      <td>
-                        ${c.lastEventAt
-                          ? new Date(c.lastEventAt).toLocaleTimeString()
-                          : '—'}
-                      </td>
+                      <td>${c.lastEventAt ? new Date(c.lastEventAt).toLocaleTimeString() : '—'}</td>
                     </tr>
                   `,
                 )}

@@ -76,7 +76,9 @@ function validateTask(raw: unknown, index: number): CronTask {
   const id = requireString(r['id'], `task[${index}].id`);
   const spec = requireString(r['spec'], `task[${id}].spec`);
   const enabled =
-    r['enabled'] === undefined || r['enabled'] === null ? true : toBool(r['enabled'], `task[${id}].enabled`);
+    r['enabled'] === undefined || r['enabled'] === null
+      ? true
+      : toBool(r['enabled'], `task[${id}].enabled`);
   const description = optionalString(r['description'], `task[${id}].description`);
   const type = requireString(r['type'], `task[${id}].type`) as CronTaskType;
 
@@ -94,7 +96,10 @@ function validateTask(raw: unknown, index: number): CronTask {
       const agentId = optionalString(cfg['agentId'], `task[${id}].chat.agentId`);
       const sessionId = optionalString(cfg['sessionId'], `task[${id}].chat.sessionId`);
       const senderId = optionalString(cfg['senderId'], `task[${id}].chat.senderId`);
-      const strategyRaw = optionalString(cfg['sessionStrategy'], `task[${id}].chat.sessionStrategy`);
+      const strategyRaw = optionalString(
+        cfg['sessionStrategy'],
+        `task[${id}].chat.sessionStrategy`,
+      );
       if (strategyRaw !== undefined && strategyRaw !== 'pinned' && strategyRaw !== 'fresh') {
         throw new Error(`[scheduler] task[${id}].chat.sessionStrategy must be 'pinned' | 'fresh'`);
       }
@@ -143,7 +148,9 @@ function validateTask(raw: unknown, index: number): CronTask {
       };
     }
     default:
-      throw new Error(`[scheduler] task[${id}].type must be 'chat' | 'bash' | 'workflow' (got ${type})`);
+      throw new Error(
+        `[scheduler] task[${id}].type must be 'chat' | 'bash' | 'workflow' (got ${type})`,
+      );
   }
 }
 

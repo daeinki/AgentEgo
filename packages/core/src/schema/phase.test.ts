@@ -1,12 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Value } from '@sinclair/typebox/value';
-import {
-  Phase,
-  PhaseEvent,
-  PhaseEventDetail,
-  TERMINAL_PHASES,
-  isTerminalPhase,
-} from './phase.js';
+import { Phase, PhaseEvent, PhaseEventDetail, TERMINAL_PHASES, isTerminalPhase } from './phase.js';
 
 describe('PhaseEvent schema (ADR-010 §3.1.4.3)', () => {
   it('accepts a well-formed event with no detail', () => {

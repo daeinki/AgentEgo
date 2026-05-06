@@ -34,6 +34,8 @@ export type SkillManifest = Static<typeof SkillManifest>;
 
 export function parseManifest(raw: unknown): SkillManifest {
   if (Value.Check(SkillManifest, raw)) return raw as SkillManifest;
-  const errors = [...Value.Errors(SkillManifest, raw)].slice(0, 3).map((e) => `${e.path} ${e.message}`);
+  const errors = [...Value.Errors(SkillManifest, raw)]
+    .slice(0, 3)
+    .map((e) => `${e.path} ${e.message}`);
   throw new Error(`invalid skill manifest: ${errors.join('; ')}`);
 }

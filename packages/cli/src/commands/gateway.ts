@@ -66,7 +66,9 @@ export async function gatewayStartCommand(options: GatewayStartOptions): Promise
 
   const egoConfig = (await loadEgoConfig()) ?? defaultActiveEgoConfig(paths);
   const model = createModelAdapter();
-  const port = options.port ? Number(options.port) : Number(process.env['AGENT_GATEWAY_PORT'] ?? 18790);
+  const port = options.port
+    ? Number(options.port)
+    : Number(process.env['AGENT_GATEWAY_PORT'] ?? 18790);
   const host = process.env['AGENT_GATEWAY_HOST'];
   const authToken = options.authToken ?? process.env['AGENT_GATEWAY_TOKEN'] ?? 'dev-token';
 
@@ -171,9 +173,7 @@ export async function gatewayStartCommand(options: GatewayStartOptions): Promise
   const egoLlmInfo = egoLlm ? egoLlm.getModelInfo() : undefined;
   console.log(
     `[gateway] ego state: ${egoConfig.state}` +
-      (egoLlmInfo
-        ? ` (llm: ${egoLlmInfo.provider}/${egoLlmInfo.model})`
-        : ` (llm: disabled)`),
+      (egoLlmInfo ? ` (llm: ${egoLlmInfo.provider}/${egoLlmInfo.model})` : ` (llm: disabled)`),
   );
   console.log(`[gateway] pid ${process.pid} · press Ctrl+C to stop\n`);
 

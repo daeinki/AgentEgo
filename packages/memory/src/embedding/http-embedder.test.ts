@@ -1,10 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  HttpEmbedder,
-  openAIEmbedder,
-  voyageEmbedder,
-  ollamaEmbedder,
-} from './http-embedder.js';
+import { HttpEmbedder, openAIEmbedder, voyageEmbedder, ollamaEmbedder } from './http-embedder.js';
 
 function mockFetchJson(body: unknown, status = 200): void {
   vi.stubGlobal(
@@ -79,7 +74,8 @@ describe('HttpEmbedder', () => {
       dimensions: 4,
     });
     await emb.embed('x');
-    const headers = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![1]!.headers as Record<string, string>;
+    const headers = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![1]!
+      .headers as Record<string, string>;
     expect(headers['Authorization']).toBeUndefined();
   });
 
@@ -133,7 +129,9 @@ describe('HttpEmbedder', () => {
       augmentRequest: (body) => ({ ...body, input_type: 'document' }),
     });
     await emb.embed('x');
-    const body = JSON.parse(String((fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![1]!.body));
+    const body = JSON.parse(
+      String((fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![1]!.body),
+    );
     expect(body.input_type).toBe('document');
   });
 
@@ -180,7 +178,9 @@ describe('factory helpers', () => {
     const emb = voyageEmbedder({ apiKey: 'v-1', inputType: 'query' });
     await emb.embed('hi');
     const body = JSON.parse(
-      String(((fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![1] as RequestInit).body),
+      String(
+        ((fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![1] as RequestInit).body,
+      ),
     );
     expect(body.input_type).toBe('query');
   });

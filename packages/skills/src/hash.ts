@@ -14,7 +14,10 @@ import { join, relative, sep } from 'node:path';
  * This is order-stable across filesystems and resilient to the traversal
  * order differences between OSes.
  */
-export async function hashSkillDirectory(root: string, excludeFile = 'manifest.json'): Promise<string> {
+export async function hashSkillDirectory(
+  root: string,
+  excludeFile = 'manifest.json',
+): Promise<string> {
   const entries = await walkFiles(root);
   const normalized: Array<{ path: string; sha: string }> = [];
   for (const file of entries) {

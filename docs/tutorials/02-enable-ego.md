@@ -8,14 +8,15 @@
 
 EGO 는 사용자 메시지를 받아 **4가지 판단** 중 하나를 내립니다:
 
-| 판단 | 의미 | 예시 |
-|------|------|------|
-| `passthrough` | 그대로 통과 (개입 불필요) | "안녕" |
-| `enrich` | 맥락 보강 후 전달 | "어제 리뷰한 PR 올려도 돼?" → 어제 리뷰 메모리 주입 |
-| `redirect` | 다른 에이전트로 전환 | "DB 쿼리 문제" → `db-specialist` 에이전트로 |
-| `direct_response` | EGO 가 직접 응답 | "내 페르소나 알려줘" (에이전트 불러올 필요 없음) |
+| 판단              | 의미                      | 예시                                                |
+| ----------------- | ------------------------- | --------------------------------------------------- |
+| `passthrough`     | 그대로 통과 (개입 불필요) | "안녕"                                              |
+| `enrich`          | 맥락 보강 후 전달         | "어제 리뷰한 PR 올려도 돼?" → 어제 리뷰 메모리 주입 |
+| `redirect`        | 다른 에이전트로 전환      | "DB 쿼리 문제" → `db-specialist` 에이전트로         |
+| `direct_response` | EGO 가 직접 응답          | "내 페르소나 알려줘" (에이전트 불러올 필요 없음)    |
 
 두 계층 구조:
+
 - **빠른 경로** (규칙 기반, ~16ms) — 인사/명령어는 곧바로 passthrough
 - **깊은 경로** (LLM 기반, ~2s) — 복잡한 메시지만 판단
 
@@ -26,10 +27,12 @@ pnpm --filter @agent-platform/cli dev -- ego active
 ```
 
 이 명령이 하는 일:
+
 1. `~/.agent/ego/ego.json` 을 기본 설정으로 생성
 2. `state` 를 `"active"` 로 설정
 
 출력:
+
 ```
 EGO state: active
 ```
@@ -41,6 +44,7 @@ cat ~/.agent/ego/ego.json
 ```
 
 주요 필드를 확인합니다:
+
 ```json
 {
   "schemaVersion": "1.1.0",
@@ -67,22 +71,26 @@ cat ~/.agent/ego/ego.json
 ## Step 3: 빠른 경로 확인
 
 단순 인사를 보내보면:
+
 ```bash
 pnpm --filter @agent-platform/cli dev -- send "안녕"
 ```
 
 내부에서 EGO 가:
+
 1. S1 Intake — `StandardMessage` → `EgoSignal` (<1ms)
 2. S2 Normalize — `intent: 'greeting'` 분류 (<5ms)
 3. `shouldFastExit` — `passthroughIntents` 에 `greeting` 있음 → **빠른 종료 passthrough**
 4. 감사 로그에 `ego.fast_exit` 기록
 
 상태 확인:
+
 ```bash
 pnpm --filter @agent-platform/cli dev -- status
 ```
 
 출력에:
+
 ```
 EGO state: active
 EGO operational: yes
@@ -113,29 +121,34 @@ EGO operational: yes
 ## Step 5: 깊은 경로 트리거하기
 
 복잡한 메시지로 깊은 경로를 타봅니다:
+
 ```bash
 pnpm --filter @agent-platform/cli dev -- send \
   "이 프로젝트 전반의 아키텍처를 분석하고 성능과 보안 측면에서 개선점을 찾은 뒤, 각각에 대한 리팩토링 계획을 구체적으로 세워줘"
 ```
 
 이 메시지는:
+
 - `intent: 'instruction'` — passthroughIntents 에 없음
 - `complexity: 'multi_step'` — `maxComplexityForPassthrough: 'simple'` 초과
 - → **깊은 경로 진입**
 
 EGO 가 Claude Haiku 를 호출해 `{perception, cognition, judgment}` JSON 으로 판단하고, 다음 중
 하나를 내립니다:
+
 - `passthrough` — "이 요청에 EGO 개입은 불필요하다"
 - `enrich` — "사용자는 코드 베이스 맥락이 필요할 것" → 시스템 프롬프트에 관련 메모리 주입
 
 ## Step 6: Passive 모드 (섀도우 운영)
 
 EGO 판단만 수집하고 실제 개입은 하지 않으려면:
+
 ```bash
 pnpm --filter @agent-platform/cli dev -- ego passive
 ```
 
 `state: 'passive'` 에서 EGO 는:
+
 - 모든 판단 수행 (감사 로그에 기록)
 - 하지만 `enrich`/`redirect`/`direct_response` 로 결정해도 실제로는 **passthrough 로 강제 변환**
 
@@ -160,18 +173,18 @@ ego_decision|ego.deep_path|{"action":"enrich","intent":"instruction","complexity
 
 ### 주요 감사 태그
 
-| tag | 의미 |
-|-----|------|
-| `ego_decision` | 판단 완료 (fast_exit 또는 deep_path) |
-| `ego_timeout` | `maxDecisionTimeMs` 초과 |
-| `llm_schema_mismatch` | LLM 응답이 `EgoThinkingResult` 스키마 위반 |
-| `llm_out_of_range` | confidence 가 [0,1] 범위 밖 |
-| `llm_inconsistent_action` | enrich 인데 enrichment 없음 등 |
-| `memory_timeout` | 메모리 검색 타임아웃 (`memory.onTimeout` 규칙 적용) |
-| `ego_circuit_open` | 연속 LLM 실패로 서킷 브레이커 발동 |
-| `daily_cost_cap_hit` | 일일 비용 한도 초과 → state 자동 다운그레이드 |
-| `ego_state_transition` | state 변경 (CLI 또는 자동) |
-| `ego_redirect` | 세션 전이 발생 |
+| tag                       | 의미                                                |
+| ------------------------- | --------------------------------------------------- |
+| `ego_decision`            | 판단 완료 (fast_exit 또는 deep_path)                |
+| `ego_timeout`             | `maxDecisionTimeMs` 초과                            |
+| `llm_schema_mismatch`     | LLM 응답이 `EgoThinkingResult` 스키마 위반          |
+| `llm_out_of_range`        | confidence 가 [0,1] 범위 밖                         |
+| `llm_inconsistent_action` | enrich 인데 enrichment 없음 등                      |
+| `memory_timeout`          | 메모리 검색 타임아웃 (`memory.onTimeout` 규칙 적용) |
+| `ego_circuit_open`        | 연속 LLM 실패로 서킷 브레이커 발동                  |
+| `daily_cost_cap_hit`      | 일일 비용 한도 초과 → state 자동 다운그레이드       |
+| `ego_state_transition`    | state 변경 (CLI 또는 자동)                          |
+| `ego_redirect`            | 세션 전이 발생                                      |
 
 ## Step 8: 임계값 튜닝
 
@@ -203,6 +216,7 @@ fast=18 deep=6 ratio=0.75
 ```
 
 목표 근처면 OK. 크게 벗어나면:
+
 - 너무 높음 (fast > 0.85) — 중요한 메시지도 passthrough 될 위험 → `maxComplexityForPassthrough`
   를 `trivial` 로 낮추거나 `passthroughIntents` 축소
 - 너무 낮음 (fast < 0.65) — 비용·지연 증가 → `passthroughPatterns` 확장

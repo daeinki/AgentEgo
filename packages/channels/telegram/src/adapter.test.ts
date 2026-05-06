@@ -75,9 +75,9 @@ describe('TelegramAdapter', () => {
 
   it('refuses initialize without token or client', async () => {
     const a = new TelegramAdapter();
-    await expect(
-      a.initialize({ type: 'telegram', credentials: {} }),
-    ).rejects.toThrow(/token.*client/);
+    await expect(a.initialize({ type: 'telegram', credentials: {} })).rejects.toThrow(
+      /token.*client/,
+    );
   });
 
   it('translates a private-chat text update into a StandardMessage', async () => {

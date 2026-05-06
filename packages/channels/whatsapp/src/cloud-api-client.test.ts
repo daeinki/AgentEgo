@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createHmac } from 'node:crypto';
-import {
-  CloudApiWhatsAppClient,
-  translateCloudApiMessage,
-} from './cloud-api-client.js';
+import { CloudApiWhatsAppClient, translateCloudApiMessage } from './cloud-api-client.js';
 import type { WhatsAppMessage } from './whatsapp-client.js';
 
 function sign(body: string, secret: string): string {

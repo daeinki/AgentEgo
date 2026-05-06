@@ -69,9 +69,6 @@ export class DailyCostCapExceeded extends EgoError {
 
 export class CircuitOpenError extends EgoError {
   constructor(public readonly cooldownMinutes: number) {
-    super(
-      `EGO LLM circuit open; retry after ${cooldownMinutes} minutes`,
-      'ego_circuit_open',
-    );
+    super(`EGO LLM circuit open; retry after ${cooldownMinutes} minutes`, 'ego_circuit_open');
   }
 }

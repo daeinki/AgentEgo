@@ -130,11 +130,7 @@ export function parseInbound(raw: string): DeviceInbound | { error: string } {
     }
     return out;
   }
-  if (
-    t === 'ack' &&
-    typeof rec['pushId'] === 'string' &&
-    typeof rec['receivedAt'] === 'number'
-  ) {
+  if (t === 'ack' && typeof rec['pushId'] === 'string' && typeof rec['receivedAt'] === 'number') {
     return { type: 'ack', pushId: rec['pushId'], receivedAt: rec['receivedAt'] };
   }
   return { error: `unknown or malformed envelope type: ${String(t)}` };

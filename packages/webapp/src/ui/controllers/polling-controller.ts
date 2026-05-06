@@ -67,11 +67,7 @@ export class PollingController implements ReactiveController {
   sessions: SessionSummary[] = [];
   lastError: string | null = null;
 
-  constructor(
-    host: ReactiveControllerHost,
-    gateway: GatewayController,
-    intervalMs = 5000,
-  ) {
+  constructor(host: ReactiveControllerHost, gateway: GatewayController, intervalMs = 5000) {
     this.host = host;
     this.gateway = gateway;
     this.intervalMs = intervalMs;
@@ -122,12 +118,8 @@ export class PollingController implements ReactiveController {
         this.gateway
           .call<{ instances: InstanceDescriptor[] }>('instances.list')
           .then((r) => r.instances),
-        this.gateway
-          .call<{ tasks: CronTaskDescriptor[] }>('cron.list')
-          .then((r) => r.tasks),
-        this.gateway
-          .call<{ sessions: SessionSummary[] }>('sessions.list')
-          .then((r) => r.sessions),
+        this.gateway.call<{ tasks: CronTaskDescriptor[] }>('cron.list').then((r) => r.tasks),
+        this.gateway.call<{ sessions: SessionSummary[] }>('sessions.list').then((r) => r.sessions),
       ]);
       this.overview = overview;
       this.channels = channels;

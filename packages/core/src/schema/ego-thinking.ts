@@ -99,12 +99,14 @@ export type ValidationFailureTag =
   | 'llm_invalid_target';
 
 function isOutOfRangeError(e: ValueError): boolean {
-  const schema = e.schema as {
-    minimum?: number;
-    maximum?: number;
-    exclusiveMinimum?: number;
-    exclusiveMaximum?: number;
-  } | undefined;
+  const schema = e.schema as
+    | {
+        minimum?: number;
+        maximum?: number;
+        exclusiveMinimum?: number;
+        exclusiveMaximum?: number;
+      }
+    | undefined;
   if (schema && typeof schema === 'object') {
     if (
       schema.minimum !== undefined ||
@@ -158,9 +160,7 @@ export interface ValidationOutcome {
   value?: EgoThinkingResult;
 }
 
-function postSchemaConsistencyTag(
-  value: EgoThinkingResult,
-): ValidationFailureTag | undefined {
+function postSchemaConsistencyTag(value: EgoThinkingResult): ValidationFailureTag | undefined {
   const j = value.judgment;
   if (j.action === 'enrich' && !j.enrichment) return 'llm_inconsistent_action';
   if (j.action === 'direct_response' && !j.directResponse) return 'llm_inconsistent_action';

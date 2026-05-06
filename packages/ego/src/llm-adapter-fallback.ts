@@ -44,9 +44,7 @@ export class FallbackEgoLlmAdapter implements EgoLlmAdapter {
   }
 
   getModelInfo(): { provider: string; model: string; isFallback: boolean } {
-    const base = this.activeIsFallback
-      ? this.fallback.getModelInfo()
-      : this.primary.getModelInfo();
+    const base = this.activeIsFallback ? this.fallback.getModelInfo() : this.primary.getModelInfo();
     return { provider: base.provider, model: base.model, isFallback: this.activeIsFallback };
   }
 }

@@ -103,7 +103,11 @@ describe('evolvePersona — explicit-instruction', () => {
     const before = p.communicationStyle.verbosity;
     const outcome = evolvePersona({
       persona: p,
-      feedback: { type: 'explicit-instruction', instruction: '더 간결하게', appliesTo: 'verbosity' },
+      feedback: {
+        type: 'explicit-instruction',
+        instruction: '더 간결하게',
+        appliesTo: 'verbosity',
+      },
     });
     expect(outcome.changed).toBe(true);
     expect(p.communicationStyle.verbosity).toBeLessThan(before);
@@ -116,7 +120,11 @@ describe('evolvePersona — explicit-instruction', () => {
     const before = p.communicationStyle.verbosity;
     evolvePersona({
       persona: p,
-      feedback: { type: 'explicit-instruction', instruction: '더 상세히 설명', appliesTo: 'verbosity' },
+      feedback: {
+        type: 'explicit-instruction',
+        instruction: '더 상세히 설명',
+        appliesTo: 'verbosity',
+      },
     });
     expect(p.communicationStyle.verbosity).toBeGreaterThan(before);
   });
@@ -176,7 +184,9 @@ describe('evolvePersona — correction / positive / negative / implicit / domain
       persona: p2,
       feedback: { type: 'negative-feedback', context: '', behavior: '', severity: 'strong' },
     });
-    expect(0.5 - p2.communicationStyle.proactivity).toBeGreaterThan(0.5 - p1.communicationStyle.proactivity);
+    expect(0.5 - p2.communicationStyle.proactivity).toBeGreaterThan(
+      0.5 - p1.communicationStyle.proactivity,
+    );
   });
 
   it('implicit feedback records a behavior at low confidence', () => {
@@ -194,7 +204,12 @@ describe('evolvePersona — correction / positive / negative / implicit / domain
     const p = freshPersona();
     evolvePersona({
       persona: p,
-      feedback: { type: 'domain-exposure', domain: 'baking', subtopic: 'bread', interactionCount: 5 },
+      feedback: {
+        type: 'domain-exposure',
+        domain: 'baking',
+        subtopic: 'bread',
+        interactionCount: 5,
+      },
     });
     expect(p.domainExpertise).toHaveLength(1);
     expect(p.domainExpertise[0]?.domain).toBe('baking');
@@ -214,7 +229,12 @@ describe('evolvePersona — correction / positive / negative / implicit / domain
     });
     evolvePersona({
       persona: p,
-      feedback: { type: 'domain-exposure', domain: 'baking', subtopic: 'cookies', interactionCount: 2 },
+      feedback: {
+        type: 'domain-exposure',
+        domain: 'baking',
+        subtopic: 'cookies',
+        interactionCount: 2,
+      },
     });
     expect(p.domainExpertise[0]?.confidence).toBeCloseTo(0.35);
     expect(p.domainExpertise[0]?.subTopics).toContain('cookies');
@@ -227,15 +247,27 @@ describe('§4.6 opposite-direction detection', () => {
     // Three clear "down" nudges first (verbosity).
     evolvePersona({
       persona: p,
-      feedback: { type: 'explicit-instruction', instruction: '더 간결하게', appliesTo: 'verbosity' },
+      feedback: {
+        type: 'explicit-instruction',
+        instruction: '더 간결하게',
+        appliesTo: 'verbosity',
+      },
     });
     evolvePersona({
       persona: p,
-      feedback: { type: 'explicit-instruction', instruction: '더 간결하게', appliesTo: 'verbosity' },
+      feedback: {
+        type: 'explicit-instruction',
+        instruction: '더 간결하게',
+        appliesTo: 'verbosity',
+      },
     });
     evolvePersona({
       persona: p,
-      feedback: { type: 'explicit-instruction', instruction: '더 간결하게', appliesTo: 'verbosity' },
+      feedback: {
+        type: 'explicit-instruction',
+        instruction: '더 간결하게',
+        appliesTo: 'verbosity',
+      },
     });
     // Now reverse — sum of |down deltas| ≈ 0.3, plus incoming +0.1 → triggers flip.
     const outcome = evolvePersona({
@@ -249,15 +281,30 @@ describe('§4.6 opposite-direction detection', () => {
 
 describe('§4.2 reinforcement + §4.7 maturity scale', () => {
   it('new-relationship evolution is halved', () => {
-    const p1 = freshPersona({ relationshipContext: { ...freshPersona().relationshipContext, communicationMaturity: 'new' } });
-    const p2 = freshPersona({ relationshipContext: { ...freshPersona().relationshipContext, communicationMaturity: 'established' } });
+    const p1 = freshPersona({
+      relationshipContext: { ...freshPersona().relationshipContext, communicationMaturity: 'new' },
+    });
+    const p2 = freshPersona({
+      relationshipContext: {
+        ...freshPersona().relationshipContext,
+        communicationMaturity: 'established',
+      },
+    });
     evolvePersona({
       persona: p1,
-      feedback: { type: 'explicit-instruction', instruction: '더 간결하게', appliesTo: 'verbosity' },
+      feedback: {
+        type: 'explicit-instruction',
+        instruction: '더 간결하게',
+        appliesTo: 'verbosity',
+      },
     });
     evolvePersona({
       persona: p2,
-      feedback: { type: 'explicit-instruction', instruction: '더 간결하게', appliesTo: 'verbosity' },
+      feedback: {
+        type: 'explicit-instruction',
+        instruction: '더 간결하게',
+        appliesTo: 'verbosity',
+      },
     });
     const d1 = 0.5 - p1.communicationStyle.verbosity;
     const d2 = 0.5 - p2.communicationStyle.verbosity;

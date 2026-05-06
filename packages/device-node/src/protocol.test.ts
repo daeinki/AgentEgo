@@ -23,7 +23,9 @@ describe('parseInbound', () => {
     expect('error' in res).toBe(false);
   });
   it('accepts a message envelope', () => {
-    const res = parseInbound(JSON.stringify({ type: 'message', text: '안녕', clientMessageId: 'c1' }));
+    const res = parseInbound(
+      JSON.stringify({ type: 'message', text: '안녕', clientMessageId: 'c1' }),
+    );
     expect('error' in res).toBe(false);
   });
   it('accepts an ack envelope', () => {

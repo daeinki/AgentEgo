@@ -1,10 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import type {
-  WhatsAppClient,
-  WhatsAppMessage,
-  WhatsAppSendParams,
-} from './whatsapp-client.js';
+import type { WhatsAppClient, WhatsAppMessage, WhatsAppSendParams } from './whatsapp-client.js';
 
 /**
  * WhatsApp Cloud API (Meta-hosted) client. Different transport from baileys —
@@ -263,9 +259,7 @@ function extractText(raw: CloudApiMessage): string | undefined {
   if (raw.type === 'text') return raw.text?.body;
   if (raw.type === 'button') return raw.button?.text;
   if (raw.type === 'interactive') {
-    return (
-      raw.interactive?.button_reply?.title ?? raw.interactive?.list_reply?.title ?? undefined
-    );
+    return raw.interactive?.button_reply?.title ?? raw.interactive?.list_reply?.title ?? undefined;
   }
   return undefined;
 }

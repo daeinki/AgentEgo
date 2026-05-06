@@ -59,9 +59,7 @@ export class AnthropicEgoLlmAdapter implements EgoLlmAdapter {
       // EGO is latency-sensitive classification, not agentic reasoning.
       output_config: { effort: 'low' },
       // Cache the (stable) system prompt; EGO reuses it every turn.
-      system: [
-        { type: 'text', text: req.systemPrompt, cache_control: { type: 'ephemeral' } },
-      ],
+      system: [{ type: 'text', text: req.systemPrompt, cache_control: { type: 'ephemeral' } }],
       messages: [
         {
           role: 'user',
@@ -84,15 +82,10 @@ function extractTextBlock(response: Anthropic.Message): string | null {
  * Estimate the USD cost of a single EGO LLM call given token usage. Unknown
  * model → 0.
  */
-export function estimateCost(
-  model: string,
-  inputTokens: number,
-  outputTokens: number,
-): number {
+export function estimateCost(model: string, inputTokens: number, outputTokens: number): number {
   const pricing = PRICING[model];
   if (!pricing) return 0;
   return (
-    (inputTokens * pricing.inputPerMillion) / 1e6 +
-    (outputTokens * pricing.outputPerMillion) / 1e6
+    (inputTokens * pricing.inputPerMillion) / 1e6 + (outputTokens * pricing.outputPerMillion) / 1e6
   );
 }

@@ -1,5 +1,10 @@
 import { dirname } from 'node:path';
-import type { Contracts, EgoFullConfig, SessionPolicy, StandardMessage } from '@agent-platform/core';
+import type {
+  Contracts,
+  EgoFullConfig,
+  SessionPolicy,
+  StandardMessage,
+} from '@agent-platform/core';
 import type { ModelAdapter } from '@agent-platform/agent-worker';
 import {
   ApiGateway,
@@ -9,17 +14,8 @@ import {
   SessionStore,
   type MessageHandler,
 } from '@agent-platform/control-plane';
-import {
-  EgoLayer,
-  FileGoalStore,
-  FilePersonaManager,
-  SqliteAuditLog,
-} from '@agent-platform/ego';
-import {
-  HashEmbedder,
-  PalaceMemorySystem,
-  type EmbeddingProvider,
-} from '@agent-platform/memory';
+import { EgoLayer, FileGoalStore, FilePersonaManager, SqliteAuditLog } from '@agent-platform/ego';
+import { HashEmbedder, PalaceMemorySystem, type EmbeddingProvider } from '@agent-platform/memory';
 import {
   AgentRunner,
   EmbedderStepMatcher,
@@ -236,8 +232,7 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
       ? new SqliteTraceLog({
           storePath: config.traceDbPath,
           retentionDays:
-            config.traceRetentionDays ??
-            Number(process.env['AGENT_TRACE_RETENTION_DAYS'] ?? 14),
+            config.traceRetentionDays ?? Number(process.env['AGENT_TRACE_RETENTION_DAYS'] ?? 14),
         })
       : new NoopTraceLogger());
 
@@ -323,7 +318,12 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
     // repopulates from the current disk state.
     const nonSkillNames = new Set<string>();
     for (const t of liveRegistry.snapshot()) {
-      if (!t.name.includes('.') || t.name.startsWith('fs.') || t.name.startsWith('web.') || t.name.startsWith('skill.')) {
+      if (
+        !t.name.includes('.') ||
+        t.name.startsWith('fs.') ||
+        t.name.startsWith('web.') ||
+        t.name.startsWith('skill.')
+      ) {
         // Heuristic: preserve platform-wired tools. Skill tools typically use
         // dotted names that do not start with fs./web./skill.
       }
@@ -347,21 +347,17 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
     // Seed first-party builtin skills (idempotent). Runs before any mounting
     // so both user-installed and builtin skills flow through the same
     // `mountInstalledSkills` path below.
-    const seedResult = await seedBuiltinSkills(
-      config.skillInstallRoot,
-      BUILTIN_SKILLS_ROOT,
-      {
-        logger: (m) =>
-          traceLogger.event({
-            traceId: 'boot',
-            block: 'P1',
-            event: 'skill_seed',
-            timestamp: Date.now(),
-            summary: `skill seed: ${m.slice(0, 90)}`,
-            payload: { message: m },
-          }),
-      },
-    );
+    const seedResult = await seedBuiltinSkills(config.skillInstallRoot, BUILTIN_SKILLS_ROOT, {
+      logger: (m) =>
+        traceLogger.event({
+          traceId: 'boot',
+          block: 'P1',
+          event: 'skill_seed',
+          timestamp: Date.now(),
+          summary: `skill seed: ${m.slice(0, 90)}`,
+          payload: { message: m },
+        }),
+    });
     if (
       seedResult.seeded.length > 0 ||
       seedResult.upgraded.length > 0 ||
@@ -453,96 +449,97 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
     });
     let egoActionTaken: string | undefined;
     try {
-    return await withSpan(
-      'platform.handleTurn',
-      async () => {
-        // ADR-010: phase `ego_judging` fires before EGO processing starts.
-        // When EGO is disabled (state=off) the layer short-circuits and the
-        // phase still serves as a sentinel for "server accepted the work".
-        ctx.emitPhase?.('ego_judging');
+      return await withSpan(
+        'platform.handleTurn',
+        async () => {
+          // ADR-010: phase `ego_judging` fires before EGO processing starts.
+          // When EGO is disabled (state=off) the layer short-circuits and the
+          // phase still serves as a sentinel for "server accepted the work".
+          ctx.emitPhase?.('ego_judging');
 
-        // 1. EGO judgment
-        const record = await withSpan(
-          'platform.ego',
-          async () => ego.processDetailed(msg, { sessionId: ctx.sessionId, agentId: ctx.agentId }),
-          { traceId: ctx.traceId },
-        );
-        egoActionTaken = record.decision.action;
-        metrics.recordEgoDecision({
-          fastExit: record.fastExit,
-          action: record.decision.action,
-          confidence: record.metadata?.confidenceScore ?? 0,
-          costUsd: record.costUsd,
-          pipelineMs: record.pipelineMs,
-        });
+          // 1. EGO judgment
+          const record = await withSpan(
+            'platform.ego',
+            async () =>
+              ego.processDetailed(msg, { sessionId: ctx.sessionId, agentId: ctx.agentId }),
+            { traceId: ctx.traceId },
+          );
+          egoActionTaken = record.decision.action;
+          metrics.recordEgoDecision({
+            fastExit: record.fastExit,
+            action: record.decision.action,
+            confidence: record.metadata?.confidenceScore ?? 0,
+            costUsd: record.costUsd,
+            pipelineMs: record.pipelineMs,
+          });
 
-        if (record.decision.action === 'direct_response') {
-          const text =
-            record.decision.content.type === 'text'
-              ? record.decision.content.text
-              : '[non-text direct response]';
-          ctx.emit(text);
-          return {};
-        }
+          if (record.decision.action === 'direct_response') {
+            const text =
+              record.decision.content.type === 'text'
+                ? record.decision.content.text
+                : '[non-text direct response]';
+            ctx.emit(text);
+            return {};
+          }
 
-        // Pull perception + cognition + goalUpdates (for ComplexityRouter and
-        // PlanExecuteExecutor trigger #3) and decisionId (for trace correlation)
-        // into channel.metadata for downstream consumption. The enrich path
-        // already attaches `_egoDecisionId` + `_egoEnrichment`; we additively
-        // layer `_egoPerception` / `_egoCognition` / `_egoGoalUpdates`.
-        const baseMsg: StandardMessage =
-          record.decision.action === 'enrich' ? record.decision.enrichedMessage : msg;
-        const effectiveMsg: StandardMessage = record.thinking
-          ? {
-              ...baseMsg,
-              channel: {
-                ...baseMsg.channel,
-                metadata: {
-                  ...baseMsg.channel.metadata,
-                  _egoPerception: record.thinking.perception,
-                  _egoCognition: record.thinking.cognition,
-                  ...(record.thinking.goalUpdates && record.thinking.goalUpdates.length > 0
-                    ? { _egoGoalUpdates: record.thinking.goalUpdates }
-                    : {}),
-                  ...(record.metadata?.egoDecisionId
-                    ? { _egoDecisionId: record.metadata.egoDecisionId }
-                    : {}),
+          // Pull perception + cognition + goalUpdates (for ComplexityRouter and
+          // PlanExecuteExecutor trigger #3) and decisionId (for trace correlation)
+          // into channel.metadata for downstream consumption. The enrich path
+          // already attaches `_egoDecisionId` + `_egoEnrichment`; we additively
+          // layer `_egoPerception` / `_egoCognition` / `_egoGoalUpdates`.
+          const baseMsg: StandardMessage =
+            record.decision.action === 'enrich' ? record.decision.enrichedMessage : msg;
+          const effectiveMsg: StandardMessage = record.thinking
+            ? {
+                ...baseMsg,
+                channel: {
+                  ...baseMsg.channel,
+                  metadata: {
+                    ...baseMsg.channel.metadata,
+                    _egoPerception: record.thinking.perception,
+                    _egoCognition: record.thinking.cognition,
+                    ...(record.thinking.goalUpdates && record.thinking.goalUpdates.length > 0
+                      ? { _egoGoalUpdates: record.thinking.goalUpdates }
+                      : {}),
+                    ...(record.metadata?.egoDecisionId
+                      ? { _egoDecisionId: record.metadata.egoDecisionId }
+                      : {}),
+                  },
                 },
-              },
-            }
-          : baseMsg;
+              }
+            : baseMsg;
 
-        // 2. Agent turn
-        const result = await withSpan(
-          'platform.agent',
-          async () => runner.processTurn(ctx.sessionId, effectiveMsg, ctx.emit, ctx.emitPhase),
-          { traceId: ctx.traceId },
-        );
-        metrics.recordTurn({
-          traceId: ctx.traceId,
-          sessionId: ctx.sessionId,
-          agentId: ctx.agentId,
-          channelType: msg.channel.type,
-          model: config.modelAdapter.getModelInfo().model,
-          inputTokens: result.inputTokens,
-          outputTokens: result.outputTokens,
-          estimatedCostUsd: result.costUsd ?? 0,
-          firstTokenLatencyMs: result.latencyMs,
-          totalLatencyMs: result.latencyMs,
-          toolCallCount: 0,
-          toolCallLatencyMs: [],
-          retryCount: 0,
-          failoverTriggered: false,
-          compactionTriggered: false,
-        });
-        return {
-          ...(result.inputTokens !== undefined ? { inputTokens: result.inputTokens } : {}),
-          ...(result.outputTokens !== undefined ? { outputTokens: result.outputTokens } : {}),
-          ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
-        };
-      },
-      { sessionId: ctx.sessionId },
-    );
+          // 2. Agent turn
+          const result = await withSpan(
+            'platform.agent',
+            async () => runner.processTurn(ctx.sessionId, effectiveMsg, ctx.emit, ctx.emitPhase),
+            { traceId: ctx.traceId },
+          );
+          metrics.recordTurn({
+            traceId: ctx.traceId,
+            sessionId: ctx.sessionId,
+            agentId: ctx.agentId,
+            channelType: msg.channel.type,
+            model: config.modelAdapter.getModelInfo().model,
+            inputTokens: result.inputTokens,
+            outputTokens: result.outputTokens,
+            estimatedCostUsd: result.costUsd ?? 0,
+            firstTokenLatencyMs: result.latencyMs,
+            totalLatencyMs: result.latencyMs,
+            toolCallCount: 0,
+            toolCallLatencyMs: [],
+            retryCount: 0,
+            failoverTriggered: false,
+            compactionTriggered: false,
+          });
+          return {
+            ...(result.inputTokens !== undefined ? { inputTokens: result.inputTokens } : {}),
+            ...(result.outputTokens !== undefined ? { outputTokens: result.outputTokens } : {}),
+            ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+          };
+        },
+        { sessionId: ctx.sessionId },
+      );
     } catch (err) {
       traceLogger.event({
         traceId: ctx.traceId,
@@ -589,9 +586,7 @@ export async function startPlatform(config: PlatformConfig): Promise<PlatformHan
     sessions,
     handler,
     ...(devices ? { devices } : {}),
-    ...(config.webappDir
-      ? { webapp: { dir: config.webappDir, enabled: true } }
-      : {}),
+    ...(config.webappDir ? { webapp: { dir: config.webappDir, enabled: true } } : {}),
   });
   const gatewayPort = await gateway.start();
 
@@ -694,8 +689,7 @@ function buildScheduler(opts: {
 }): SchedulerService {
   const tasks = opts.tasksFile ? loadTasksFromFile(opts.tasksFile) : [];
   const workflowBaseDir =
-    opts.workflowBaseDir ??
-    (opts.tasksFile ? dirname(opts.tasksFile) : undefined);
+    opts.workflowBaseDir ?? (opts.tasksFile ? dirname(opts.tasksFile) : undefined);
   const chatRunner = new ChatTaskRunner({
     handler: opts.handler,
     router: opts.router,

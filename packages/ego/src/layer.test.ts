@@ -102,7 +102,9 @@ describe('EgoLayer fast-path', () => {
   it('passes through when no LLM is wired up, even for complex messages', async () => {
     const ego = new EgoLayer(testConfig);
     const decision = await ego.process(
-      makeMessage('이 프로젝트의 아키텍처를 분석하고 개선점을 찾아줘. 특히 성능과 보안 측면에서 검토해줘.'),
+      makeMessage(
+        '이 프로젝트의 아키텍처를 분석하고 개선점을 찾아줘. 특히 성능과 보안 측면에서 검토해줘.',
+      ),
       procParams,
     );
     expect(decision.action).toBe('passthrough');
@@ -113,7 +115,8 @@ describe('EgoLayer fast-path', () => {
   it('fastPath.enabled=false forces deep path even for greeting (no-LLM → deep_path_skipped)', async () => {
     const events: { event: string; payload?: unknown }[] = [];
     const traceLogger = {
-      event: (e: { event: string; payload?: unknown }) => events.push({ event: e.event, payload: e.payload }),
+      event: (e: { event: string; payload?: unknown }) =>
+        events.push({ event: e.event, payload: e.payload }),
       span: async <T>(_o: unknown, fn: () => Promise<T>) => fn(),
     };
     const configDeepOnly: EgoFullConfig = {

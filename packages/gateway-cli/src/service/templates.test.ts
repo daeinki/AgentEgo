@@ -20,9 +20,7 @@ function sampleOpts(overrides: Partial<InstallOptions> = {}): InstallOptions {
 
 describe('buildBatchWrapper (Windows schtasks)', () => {
   it('emits a CRLF batch file with chdir, env, and stdio redirection', () => {
-    const out = buildBatchWrapper(
-      sampleOpts({ nodeBinary: 'C:/Program Files/nodejs/node.exe' }),
-    );
+    const out = buildBatchWrapper(sampleOpts({ nodeBinary: 'C:/Program Files/nodejs/node.exe' }));
     expect(out).toContain('@echo off');
     expect(out).toContain('cd /d "/home/u/.agent"');
     expect(out).toContain('set "AGENT_STATE_DIR=/home/u/.agent"');
@@ -80,9 +78,7 @@ describe('buildUnit (Linux systemd --user)', () => {
   });
 
   it('quotes env values with shell metacharacters', () => {
-    const unit = buildUnit(
-      sampleOpts({ env: { TRICKY: 'has spaces and "quotes"' } }),
-    );
+    const unit = buildUnit(sampleOpts({ env: { TRICKY: 'has spaces and "quotes"' } }));
     // The value should be wrapped in quotes and inner quotes escaped.
     expect(unit).toMatch(/Environment=TRICKY="has spaces and \\"quotes\\""/);
   });

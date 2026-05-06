@@ -47,9 +47,7 @@ export class OpenAiEgoLlmAdapter implements EgoLlmAdapter {
       const usesCompletionTokens = isNewGenModel(this.model);
       await this.client.chat.completions.create({
         model: this.model,
-        ...(usesCompletionTokens
-          ? { max_completion_tokens: 8 }
-          : { max_tokens: 8 }),
+        ...(usesCompletionTokens ? { max_completion_tokens: 8 } : { max_tokens: 8 }),
         messages: [{ role: 'user', content: 'ping' }],
       });
       return true;
@@ -112,7 +110,6 @@ export function estimateOpenAiCost(
   const pricing = PRICING[model];
   if (!pricing) return 0;
   return (
-    (inputTokens * pricing.inputPerMillion) / 1e6 +
-    (outputTokens * pricing.outputPerMillion) / 1e6
+    (inputTokens * pricing.inputPerMillion) / 1e6 + (outputTokens * pricing.outputPerMillion) / 1e6
   );
 }

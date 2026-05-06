@@ -49,7 +49,11 @@ const ownerPolicy: SessionPolicy = {
   resourceLimits: { maxCpuSeconds: 1, maxMemoryMb: 1, maxDiskMb: 1, networkEnabled: false },
 };
 
-const allowAll: Contracts.CapabilityGuard = { async check() { return { allowed: true }; } };
+const allowAll: Contracts.CapabilityGuard = {
+  async check() {
+    return { allowed: true };
+  },
+};
 
 describe('reasoning pipeline e2e — router → plan-execute → final', () => {
   it('routes a multi-step prompt to plan_execute and executes the plan end-to-end', async () => {
@@ -84,7 +88,13 @@ describe('reasoning pipeline e2e — router → plan-execute → final', () => {
     const planJson = JSON.stringify({
       rationale: 'three tools in order',
       steps: [
-        { id: 's1', goal: 'list markdown files', tool: 'glob_files', args: { pattern: '*.md' }, dependsOn: [] },
+        {
+          id: 's1',
+          goal: 'list markdown files',
+          tool: 'glob_files',
+          args: { pattern: '*.md' },
+          dependsOn: [],
+        },
         { id: 's2', goal: 'read them', tool: 'read_file', args: {}, dependsOn: ['s1'] },
         { id: 's3', goal: 'pull headings', tool: 'extract_headings', args: {}, dependsOn: ['s2'] },
       ],
@@ -112,11 +122,11 @@ describe('reasoning pipeline e2e — router → plan-execute → final', () => {
     expect(mode).toBe('plan_execute');
 
     const reactFallback = new ReactExecutor(model);
-    const planExecutor = new PlanExecuteExecutor(
-      model,
-      reactFallback,
-      { capabilityGuard: allowAll, toolSandbox: sandbox, sessionPolicy: ownerPolicy },
-    );
+    const planExecutor = new PlanExecuteExecutor(model, reactFallback, {
+      capabilityGuard: allowAll,
+      toolSandbox: sandbox,
+      sessionPolicy: ownerPolicy,
+    });
 
     const ctx: Contracts.ReasoningContext = {
       sessionId: 's-e2e',
@@ -201,7 +211,10 @@ describe('reasoning pipeline e2e — router → plan-execute → final', () => {
     })) {
       events.push(ev);
     }
-    const final = events.find((e) => e.kind === 'final') as { text: string; state: { terminationReason: string } };
+    const final = events.find((e) => e.kind === 'final') as {
+      text: string;
+      state: { terminationReason: string };
+    };
     expect(final.text).toBe('지금은 오후 3시입니다.');
     expect(final.state.terminationReason).toBe('final_answer');
   });

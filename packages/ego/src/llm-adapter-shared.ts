@@ -8,9 +8,7 @@ import { parseEgoThinkingJson, Schemas, SchemaValidationError } from '@agent-pla
  * `llm_schema_mismatch`: without it the model has to guess field names and
  * regularly drops required fields (enrichment, directResponse, ...).
  */
-const EGO_RESULT_SCHEMA_JSON = JSON.stringify(
-  Schemas.EgoThinkingSchema.EgoThinkingResult,
-);
+const EGO_RESULT_SCHEMA_JSON = JSON.stringify(Schemas.EgoThinkingSchema.EgoThinkingResult);
 
 /**
  * Build the user-message JSON payload shared by all provider-specific EGO

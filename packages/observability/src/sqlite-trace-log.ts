@@ -35,9 +35,7 @@ CREATE INDEX IF NOT EXISTS idx_trace_events_block ON trace_events(block, timesta
  * but throws if the column already exists, so we probe with PRAGMA first.
  */
 function ensureSummaryColumn(db: DatabaseSync): void {
-  const cols = db
-    .prepare('PRAGMA table_info(trace_events)')
-    .all() as Array<{ name: string }>;
+  const cols = db.prepare('PRAGMA table_info(trace_events)').all() as Array<{ name: string }>;
   if (cols.some((c) => c.name === 'summary')) return;
   try {
     db.exec('ALTER TABLE trace_events ADD COLUMN summary TEXT;');

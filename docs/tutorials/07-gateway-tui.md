@@ -42,6 +42,7 @@ pnpm --filter @agent-platform/cli dev -- gateway start
 ```
 
 출력:
+
 ```
 [gateway] starting on port 18790...
 [gateway] state dir: C:\Users\daein\.agent
@@ -87,12 +88,12 @@ Ink 가 전체 화면을 잡고 상태줄·히스토리·입력바를 그린다.
 
 **키바인딩**:
 
-| 키 | 동작 |
-|---|---|
-| `Enter` | 입력 전송 |
+| 키       | 동작                                              |
+| -------- | ------------------------------------------------- |
+| `Enter`  | 입력 전송                                         |
 | `Ctrl+N` | 새 세션 (히스토리 클리어 + server-side 세션 분리) |
-| `Ctrl+L` | 화면만 클리어 (세션은 유지) |
-| `Ctrl+D` | 종료 |
+| `Ctrl+L` | 화면만 클리어 (세션은 유지)                       |
+| `Ctrl+D` | 종료                                              |
 
 **멀티 클라이언트**: 같은 `--conversation` 인자를 주면 여러 TUI 인스턴스가 같은 세션에 붙는다.
 
@@ -119,6 +120,7 @@ node packages/cli/dist/program.js gateway start --detach
 ```
 
 출력:
+
 ```
 [gateway] spawning detached daemon...
 [gateway] running in background
@@ -158,10 +160,12 @@ node packages/cli/dist/program.js gateway install --start --auth-token my-secret
 ```
 
 생성물:
+
 - 작업 스케줄러에 `AgentPlatformGateway` 태스크 (트리거: ONLOGON, 권한: HIGHEST)
 - `%LOCALAPPDATA%\agent-platform\service-wrappers\AgentPlatformGateway.cmd` (stdio 리다이렉션 래퍼)
 
 검증:
+
 ```powershell
 # GUI 로그오프 → 로그온 → 자동 기동 확인
 node packages/cli/dist/program.js gateway status
@@ -169,6 +173,7 @@ node packages/cli/dist/program.js gateway status
 ```
 
 해제:
+
 ```powershell
 node packages/cli/dist/program.js gateway uninstall
 ```
@@ -180,6 +185,7 @@ node packages/cli/dist/program.js gateway install --start
 ```
 
 생성물:
+
 - `~/Library/LaunchAgents/com.agent-platform.gateway.plist` (`RunAtLoad=true`, `KeepAlive=true`)
 - `launchctl bootstrap gui/<uid>` 로 즉시 부팅 도메인에 등록
 
@@ -190,6 +196,7 @@ node packages/cli/dist/program.js gateway install --start
 ```
 
 생성물:
+
 - `~/.config/systemd/user/agent-platform-gateway.service` (`Restart=on-failure`)
 - `systemctl --user enable --now` 로 즉시 기동 + 자동 활성
 
@@ -212,20 +219,21 @@ TUI 에서 `Ctrl+N` 으로 새 세션을 만든 뒤 `--conversation shared` 로 
 
 이 튜토리얼에서 사용한 명령과 산출물:
 
-| 명령 | 결과 |
-|---|---|
-| `agent gateway start` | 포그라운드 데몬, Ctrl+C 로 정지 |
-| `agent gateway start --detach` | 백그라운드 fork, pidfile + port 파일 생성 |
-| `agent gateway health` | RPC `gateway.health` — 업타임·포트·pid |
-| `agent gateway status` | pidfile 기반 생존 체크 + health RPC |
-| `agent gateway logs [-n N] [--stderr]` | 백그라운드 로그 tail |
-| `agent gateway stop` | RPC `gateway.shutdown` + pidfile 정리 |
-| `agent gateway install [--start] [--label X]` | OS 서비스 매니저 등록 |
-| `agent gateway uninstall` | 서비스 해제 |
-| `agent gateway restart` | 서비스 재시작 |
-| `agent tui` | Ink 기반 대화형 클라이언트 |
+| 명령                                          | 결과                                      |
+| --------------------------------------------- | ----------------------------------------- |
+| `agent gateway start`                         | 포그라운드 데몬, Ctrl+C 로 정지           |
+| `agent gateway start --detach`                | 백그라운드 fork, pidfile + port 파일 생성 |
+| `agent gateway health`                        | RPC `gateway.health` — 업타임·포트·pid    |
+| `agent gateway status`                        | pidfile 기반 생존 체크 + health RPC       |
+| `agent gateway logs [-n N] [--stderr]`        | 백그라운드 로그 tail                      |
+| `agent gateway stop`                          | RPC `gateway.shutdown` + pidfile 정리     |
+| `agent gateway install [--start] [--label X]` | OS 서비스 매니저 등록                     |
+| `agent gateway uninstall`                     | 서비스 해제                               |
+| `agent gateway restart`                       | 서비스 재시작                             |
+| `agent tui`                                   | Ink 기반 대화형 클라이언트                |
 
 **핵심 이해**:
+
 - ✅ 데몬이 세션·EGO·메모리를 소유 → 초기화 비용 없이 연속 대화
 - ✅ JSON-RPC 2.0 표준 envelope + `chat.delta` notification 으로 스트리밍
 - ✅ `~/.agent/` 하나에 상태 통일 (`AGENT_STATE_DIR` 로 프로젝트별 격리 가능)
@@ -240,6 +248,7 @@ TUI 에서 `Ctrl+N` 으로 새 세션을 만든 뒤 `--conversation shared` 로 
 ## 문제 해결
 
 ### `gateway already running at pid N on port P`
+
 같은 `AGENT_STATE_DIR` 에서 이전 인스턴스가 아직 살아 있음. `gateway stop` 으로 먼저 내리거나,
 실제로 죽은 경우라면 pidfile 이 stale 일 수 있다:
 
@@ -252,6 +261,7 @@ rm ~/.agent/run/gateway.*
 오인할 수 있다. 수동 정리가 가장 확실.
 
 ### `gateway did not publish its port within 15000ms`
+
 detach 모드에서 자식 데몬이 부팅에 실패한 경우. stderr 로그를 확인:
 
 ```bash
@@ -259,10 +269,12 @@ cat ~/.agent/logs/gateway.err.log
 ```
 
 흔한 원인:
+
 - `OPENAI_API_KEY` 미설정 (모델 어댑터 생성 실패)
 - 이미 다른 프로세스가 포트를 점유
 
 ### `--detach` 가 dev 모드에서 실패
+
 `tsx` 를 경유한 detach 는 fragile. 빌드 엔트리를 써라:
 
 ```bash
@@ -271,9 +283,11 @@ node packages/cli/dist/program.js gateway start --detach
 ```
 
 ### TUI 화면이 깨짐 / 입력이 안 됨
+
 Ink 는 풀 TTY 를 요구한다. Git Bash · 구형 cmd · 파이프된 stdout 에서는 정상 동작하지 않는다.
 Windows Terminal · iTerm2 · 최신 GNOME Terminal 을 쓰고, `pnpm` 출력을 파이프나 tee 에 걸지 마라.
 
 ### 401 Unauthorized
+
 `--auth-token` 이나 `AGENT_GATEWAY_TOKEN` 이 gateway 쪽과 클라이언트 쪽이 다름. 기본값은 양쪽 모두
 `dev-token`.

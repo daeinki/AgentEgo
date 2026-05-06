@@ -29,7 +29,9 @@ describe('intake (S1)', () => {
   });
 
   it('uses caption for media', () => {
-    const s = intake(make({ type: 'media', mimeType: 'image/png', url: 'http://x/y.png', caption: '스크린샷' }));
+    const s = intake(
+      make({ type: 'media', mimeType: 'image/png', url: 'http://x/y.png', caption: '스크린샷' }),
+    );
     expect(s.contentType).toBe('media');
     expect(s.rawText).toBe('스크린샷');
   });

@@ -80,9 +80,7 @@ export class AppSidebarEl extends LitElement {
     },
     {
       label: strings.sidebar.resources,
-      items: [
-        { id: 'docs', label: strings.sidebar.docs, icon: '📘', disabled: true },
-      ],
+      items: [{ id: 'docs', label: strings.sidebar.docs, icon: '📘', disabled: true }],
     },
   ];
 

@@ -66,19 +66,14 @@ export async function traceListCommand(options: TraceListOptions): Promise<void>
   for (const r of rows) console.log(formatListRow(r));
 }
 
-export async function traceShowCommand(
-  traceId: string,
-  options: TraceShowOptions,
-): Promise<void> {
+export async function traceShowCommand(traceId: string, options: TraceShowOptions): Promise<void> {
   const events = withDb((q) => q.getTraceTimeline(traceId));
   if (events.length === 0) {
     console.log(`[trace] no events for traceId ${traceId}.`);
     return;
   }
   const filtered =
-    options.filter !== undefined
-      ? events.filter((e) => e.block === options.filter)
-      : events;
+    options.filter !== undefined ? events.filter((e) => e.block === options.filter) : events;
   if (filtered.length === 0) {
     console.log(`[trace] no events match block='${options.filter}' for traceId ${traceId}.`);
     return;
@@ -146,10 +141,7 @@ function formatListRow(r: TraceSummary): string {
   ].join('  ');
 }
 
-function renderTimeline(
-  events: Contracts.TraceEvent[],
-  options: TraceRenderOptions = {},
-): void {
+function renderTimeline(events: Contracts.TraceEvent[], options: TraceRenderOptions = {}): void {
   const t0 = events[0]!.timestamp;
   const startedAt = new Date(t0).toISOString().slice(0, 19).replace('T', ' ');
   // ANSI color is on by default in TTY; fall back to plain when piped or
@@ -165,8 +157,7 @@ function renderTimeline(
           const offsetMs = ev.timestamp - t0;
           return offsetMs < 1000 ? `${offsetMs}ms` : `${(offsetMs / 1000).toFixed(2)}s`;
         })();
-    const dur =
-      ev.durationMs !== undefined ? c.dim(` (${ev.durationMs}ms)`) : '';
+    const dur = ev.durationMs !== undefined ? c.dim(` (${ev.durationMs}ms)`) : '';
     const block = c.block(ev.block, pad(ev.block, 3));
     const eventName = c.event(ev.event, pad(ev.event, 22));
     // Prefer the emitter-supplied summary; fall back to a payload digest so

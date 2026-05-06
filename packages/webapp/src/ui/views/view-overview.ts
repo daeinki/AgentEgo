@@ -1,9 +1,6 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
-import type {
-  OverviewStatus,
-  ChannelDescriptor,
-} from '../controllers/polling-controller.js';
+import type { OverviewStatus, ChannelDescriptor } from '../controllers/polling-controller.js';
 
 @customElement('view-overview')
 export class ViewOverviewEl extends LitElement {
@@ -99,18 +96,15 @@ export class ViewOverviewEl extends LitElement {
         : html`<p class="empty">Waiting for gateway snapshot…</p>`}
       ${o && o.activeAgents.length > 0
         ? html`
-            <h2 style="font-size:14px;margin:0 0 8px;color:var(--fg-secondary);">
-              Active agents
-            </h2>
-            <ul
-              style="margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:6px;"
-            >
+            <h2 style="font-size:14px;margin:0 0 8px;color:var(--fg-secondary);">Active agents</h2>
+            <ul style="margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:6px;">
               ${o.activeAgents.map(
-                (a) => html`<li
-                  style="padding:4px 10px;background:var(--bg-muted);border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:12px;"
-                >
-                  ${a}
-                </li>`,
+                (a) =>
+                  html`<li
+                    style="padding:4px 10px;background:var(--bg-muted);border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:12px;"
+                  >
+                    ${a}
+                  </li>`,
               )}
             </ul>
           `

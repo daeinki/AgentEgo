@@ -80,7 +80,11 @@ describe('ApiGateway', () => {
   });
 
   it('GET /sessions/:id returns the session', async () => {
-    const s = store.createSession({ agentId: 'default', channelType: 'webchat', conversationId: 'c-1' });
+    const s = store.createSession({
+      agentId: 'default',
+      channelType: 'webchat',
+      conversationId: 'c-1',
+    });
     const res = await fetch(`http://127.0.0.1:${port}/sessions/${s.id}`, {
       headers: { Authorization: 'Bearer sekrit' },
     });
@@ -226,7 +230,8 @@ describe('ApiGateway', () => {
     }
     await new Promise((r) => setTimeout(r, 200));
     const errors = received.filter(
-      (r) => (r as { type?: string; code?: string }).type === 'error' &&
+      (r) =>
+        (r as { type?: string; code?: string }).type === 'error' &&
         (r as { code?: string }).code === 'rate_limited',
     );
     expect(errors.length).toBeGreaterThanOrEqual(1);

@@ -213,7 +213,8 @@ export class SlackAdapter implements ChannelAdapter {
     if (config.socketUrlOverride !== undefined) opts.socketUrlOverride = config.socketUrlOverride;
     if (config.WebSocketImpl !== undefined) opts.WebSocketImpl = config.WebSocketImpl;
     if (config.autoReconnect !== undefined) opts.autoReconnect = config.autoReconnect;
-    if (config.maxReconnectDelayMs !== undefined) opts.maxReconnectDelayMs = config.maxReconnectDelayMs;
+    if (config.maxReconnectDelayMs !== undefined)
+      opts.maxReconnectDelayMs = config.maxReconnectDelayMs;
     if (config.onLifecycle !== undefined) opts.onLifecycle = config.onLifecycle;
     this.socket = new SocketModeTransport(opts);
     await this.socket.start();

@@ -1,9 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import type {
-  ClassificationResult,
-  ConversationTurn,
-  IngestResult,
-} from '@agent-platform/core';
+import type { ClassificationResult, ConversationTurn, IngestResult } from '@agent-platform/core';
 import { generateId, nowIso } from '@agent-platform/core';
 import type { MemoryChunkStore } from '../db/store.js';
 import type { EmbeddingProvider } from '../embedding/types.js';
@@ -42,7 +38,9 @@ export async function ingestTurn(
 ): Promise<IngestResult> {
   const formatted = formatTurn(turn);
   const classification = classifyContent(formatted);
-  const classifications = [`${classification.wing}${classification.subcategory ? `/${classification.subcategory}` : ''}`];
+  const classifications = [
+    `${classification.wing}${classification.subcategory ? `/${classification.subcategory}` : ''}`,
+  ];
 
   const chunks = chunkText(formatted, { targetTokens: options.targetTokens ?? 300 });
   if (chunks.length === 0) {

@@ -31,10 +31,7 @@ describe('TraceLogger contract', () => {
 
   it('NoopTraceLogger.span() returns the fn result and does not record', async () => {
     const logger = new NoopTraceLogger();
-    const result = await logger.span(
-      { traceId: 'trc-1', block: 'P1' },
-      async () => 42,
-    );
+    const result = await logger.span({ traceId: 'trc-1', block: 'P1' }, async () => 42);
     expect(result).toBe(42);
   });
 

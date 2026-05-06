@@ -7,12 +7,5 @@ export { loadSkillTools, assertSafeEntryPoint } from './loader.js';
 export type { LoadedSkillTool, SkillModule, SkillLoaderOptions } from './loader.js';
 export { mountInstalledSkills } from './tool-registrar.js';
 export type { SkillToolMount } from './tool-registrar.js';
-export {
-  seedBuiltinSkills,
-  compareVersions,
-  BUILTIN_SKILLS_ROOT,
-} from './bootstrap.js';
-export type {
-  SeedBuiltinSkillsOptions,
-  SeedBuiltinSkillsResult,
-} from './bootstrap.js';
+export { seedBuiltinSkills, compareVersions, BUILTIN_SKILLS_ROOT } from './bootstrap.js';
+export type { SeedBuiltinSkillsOptions, SeedBuiltinSkillsResult } from './bootstrap.js';

@@ -1,8 +1,4 @@
-import type {
-  EvolutionRules,
-  Persona,
-  PersonaFeedback,
-} from '@agent-platform/core';
+import type { EvolutionRules, Persona, PersonaFeedback } from '@agent-platform/core';
 import { nowIso } from '@agent-platform/core';
 
 export interface EvolutionOutcome {
@@ -32,7 +28,7 @@ export const DEFAULT_EVOLUTION_RULES: EvolutionRules = {
 };
 
 interface FieldRef {
-  path: string;           // dot path, e.g. 'communicationStyle.verbosity'
+  path: string; // dot path, e.g. 'communicationStyle.verbosity'
   setter: (persona: Persona, next: number) => void;
   getter: (persona: Persona) => number;
 }
@@ -41,14 +37,7 @@ const STYLE_FIELDS: Record<string, FieldRef> = mkStyleFields();
 const VALUE_FIELDS: Record<string, FieldRef> = mkValueFields();
 
 function mkStyleFields(): Record<string, FieldRef> {
-  const keys = [
-    'formality',
-    'verbosity',
-    'humor',
-    'empathy',
-    'directness',
-    'proactivity',
-  ] as const;
+  const keys = ['formality', 'verbosity', 'humor', 'empathy', 'directness', 'proactivity'] as const;
   const out: Record<string, FieldRef> = {};
   for (const k of keys) {
     out[k] = {
@@ -117,7 +106,9 @@ function recentSignals(
  * §4.7: coarse interaction-count → maturity transition. Returns the maturity
  * the persona should be at given its totalInteractions.
  */
-export function computeMaturity(totalInteractions: number): Persona['relationshipContext']['communicationMaturity'] {
+export function computeMaturity(
+  totalInteractions: number,
+): Persona['relationshipContext']['communicationMaturity'] {
   if (totalInteractions < 30) return 'new';
   if (totalInteractions < 100) return 'developing';
   return 'established';
@@ -127,7 +118,9 @@ export function computeMaturity(totalInteractions: number): Persona['relationshi
  * Apply a cap multiplier to `delta` based on maturity. New relationships
  * evolve at half the rate to avoid premature drift.
  */
-export function maturityScale(maturity: Persona['relationshipContext']['communicationMaturity']): number {
+export function maturityScale(
+  maturity: Persona['relationshipContext']['communicationMaturity'],
+): number {
   switch (maturity) {
     case 'new':
       return 0.5;
@@ -245,7 +238,13 @@ function applyStyleHint(
     return { changed: false, reason: 'no direction inferred from instruction' };
   }
 
-  return applyDelta(persona, field, direction * rules.maxDeltaPerEvent, rules, `explicit: ${instruction.slice(0, 40)}`);
+  return applyDelta(
+    persona,
+    field,
+    direction * rules.maxDeltaPerEvent,
+    rules,
+    `explicit: ${instruction.slice(0, 40)}`,
+  );
 }
 
 function reinforceFromFeedback(
@@ -282,8 +281,7 @@ function applyDelta(
       needsConfirmation: {
         field: field.path,
         recentChanges: recent.entries,
-        suggestion:
-          `Field ${field.path} has flipped direction recently. Ask the user to pick a target value.`,
+        suggestion: `Field ${field.path} has flipped direction recently. Ask the user to pick a target value.`,
       },
       reason: 'awaiting user disambiguation (§4.6)',
     };

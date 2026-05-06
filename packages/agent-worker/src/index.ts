@@ -22,19 +22,9 @@ export { InProcessSandbox } from './tools/sandbox.js';
 export { fsListTool, fsReadTool, fsWriteTool, webFetchTool } from './tools/built-in.js';
 export { buildDefaultTools, type DefaultToolsConfig } from './tools/presets.js';
 export { LiveToolRegistry } from './tools/live-registry.js';
-export {
-  DockerSandbox,
-  isDockerTool,
-} from './tools/docker-sandbox.js';
-export type {
-  DockerTool,
-  DockerCommandSpec,
-  DockerSandboxConfig,
-} from './tools/docker-sandbox.js';
-export {
-  DockerContainerRuntime,
-  buildDockerArgs,
-} from './tools/container-runtime.js';
+export { DockerSandbox, isDockerTool } from './tools/docker-sandbox.js';
+export type { DockerTool, DockerCommandSpec, DockerSandboxConfig } from './tools/docker-sandbox.js';
+export { DockerContainerRuntime, buildDockerArgs } from './tools/container-runtime.js';
 export type {
   ContainerRuntime,
   RunOptions,

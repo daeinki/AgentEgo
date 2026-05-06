@@ -88,11 +88,7 @@ export class ViewSessionsEl extends LitElement {
                       <td>
                         <span class="status ${s.status}">${s.status}</span>
                       </td>
-                      <td>
-                        ${s.updatedAt
-                          ? new Date(s.updatedAt).toLocaleString()
-                          : '—'}
-                      </td>
+                      <td>${s.updatedAt ? new Date(s.updatedAt).toLocaleString() : '—'}</td>
                     </tr>
                   `,
                 )}

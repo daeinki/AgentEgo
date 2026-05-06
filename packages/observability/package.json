@@ -26,6 +26,8 @@
     "@opentelemetry/exporter-trace-otlp-http": ">=0.50.0"
   },
   "peerDependenciesMeta": {
-    "@opentelemetry/exporter-trace-otlp-http": { "optional": true }
+    "@opentelemetry/exporter-trace-otlp-http": {
+      "optional": true
+    }
   }
 }

@@ -81,8 +81,7 @@ export class ChatController implements ReactiveController {
       }>('chat.history', { sessionId: this.sessionId, limit });
       this.turns = res.events.map((ev) => ({
         id: `hist-${ev.id}`,
-        role:
-          ev.role === 'assistant' ? 'assistant' : ev.role === 'system' ? 'system' : 'user',
+        role: ev.role === 'assistant' ? 'assistant' : ev.role === 'system' ? 'system' : 'user',
         text: ev.content,
       }));
       this.host.requestUpdate();
@@ -140,9 +139,7 @@ export class ChatController implements ReactiveController {
       const msg = (err as Error).message;
       this.lastError = msg;
       this.turns = this.turns.map((t) =>
-        t.id === agentId
-          ? { ...t, streaming: false, text: t.text || `[error] ${msg}` }
-          : t,
+        t.id === agentId ? { ...t, streaming: false, text: t.text || `[error] ${msg}` } : t,
       );
     } finally {
       this.streamingId = null;

@@ -78,7 +78,10 @@ describe('mountInstalledSkills', () => {
   });
 
   it('aggregates multiple skills into a single tool map', async () => {
-    await scaffoldAndInstall(searchDir, reg, 'alpha', { exportCreateTools: true, toolNames: ['a'] });
+    await scaffoldAndInstall(searchDir, reg, 'alpha', {
+      exportCreateTools: true,
+      toolNames: ['a'],
+    });
     await scaffoldAndInstall(searchDir, reg, 'beta', { exportCreateTools: true, toolNames: ['b'] });
 
     const moduleResolver = async (url: string): Promise<SkillModule> => {
@@ -94,7 +97,7 @@ describe('mountInstalledSkills', () => {
 
   it('reports skills whose entry point lacks createTools', async () => {
     await scaffoldAndInstall(searchDir, reg, 'broken', { exportCreateTools: false, toolNames: [] });
-    const moduleResolver = async (): Promise<SkillModule> => ({} as SkillModule);
+    const moduleResolver = async (): Promise<SkillModule> => ({}) as SkillModule;
 
     const { tools, errors } = await mountInstalledSkills(reg, { moduleResolver });
     expect(tools.size).toBe(0);
@@ -103,7 +106,10 @@ describe('mountInstalledSkills', () => {
   });
 
   it('rejects duplicate tool names across skills', async () => {
-    await scaffoldAndInstall(searchDir, reg, 'alpha', { exportCreateTools: true, toolNames: ['x'] });
+    await scaffoldAndInstall(searchDir, reg, 'alpha', {
+      exportCreateTools: true,
+      toolNames: ['x'],
+    });
     await scaffoldAndInstall(searchDir, reg, 'beta', { exportCreateTools: true, toolNames: ['x'] });
 
     const moduleResolver = async (): Promise<SkillModule> => ({
@@ -118,7 +124,10 @@ describe('mountInstalledSkills', () => {
   });
 
   it('skips skills that throw at createTools time', async () => {
-    await scaffoldAndInstall(searchDir, reg, 'thrower', { exportCreateTools: true, toolNames: ['t'] });
+    await scaffoldAndInstall(searchDir, reg, 'thrower', {
+      exportCreateTools: true,
+      toolNames: ['t'],
+    });
     const moduleResolver = async (): Promise<SkillModule> => ({
       createTools: () => {
         throw new Error('bad init');

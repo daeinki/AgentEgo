@@ -113,7 +113,9 @@ describe('AnthropicAdapter — responseFormat=json_object prefill', () => {
       event(e: { block: string; event: string; summary?: string }) {
         events.push({ block: e.block, event: e.event, summary: e.summary });
       },
-      async span<T>(_o: unknown, fn: () => Promise<T>) { return fn(); },
+      async span<T>(_o: unknown, fn: () => Promise<T>) {
+        return fn();
+      },
       async close() {},
     };
 

@@ -1,9 +1,4 @@
-import type {
-  Contracts,
-  RouteDecision,
-  RoutingRule,
-  StandardMessage,
-} from '@agent-platform/core';
+import type { Contracts, RouteDecision, RoutingRule, StandardMessage } from '@agent-platform/core';
 import { SessionStore } from './store.js';
 
 type RouterContract = Contracts.Router;

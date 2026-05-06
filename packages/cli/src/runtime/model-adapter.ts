@@ -1,8 +1,4 @@
-import {
-  AnthropicAdapter,
-  OpenAIAdapter,
-  type ModelAdapter,
-} from '@agent-platform/agent-worker';
+import { AnthropicAdapter, OpenAIAdapter, type ModelAdapter } from '@agent-platform/agent-worker';
 
 /**
  * Resolve and construct the LLM adapter based on environment:

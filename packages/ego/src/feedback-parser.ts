@@ -132,7 +132,7 @@ export class LlmFeedbackParser {
     const valid: PersonaFeedback[] = [];
     for (const item of parsed) {
       if (Value.Check(PersonaFeedbackArray, [item])) {
-        valid.push(...([item] as FeedbackArray) as PersonaFeedback[]);
+        valid.push(...([item] as FeedbackArray as PersonaFeedback[]));
       }
     }
     return valid;

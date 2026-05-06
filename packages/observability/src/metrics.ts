@@ -78,8 +78,7 @@ export class InMemoryMetricsSink implements MetricsSink {
       avgTurnLatencyMs: this.turns === 0 ? 0 : this.totalLatencyMs / this.turns,
       egoDecisions: this.egoDecisions,
       egoFastExits: this.egoFastExits,
-      egoFastExitRatio:
-        this.egoDecisions === 0 ? 0 : this.egoFastExits / this.egoDecisions,
+      egoFastExitRatio: this.egoDecisions === 0 ? 0 : this.egoFastExits / this.egoDecisions,
       auditTagCounts: { ...this.auditTagCounts },
       egoActionCounts: { ...this.egoActionCounts },
     };

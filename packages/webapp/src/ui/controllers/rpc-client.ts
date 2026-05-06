@@ -48,12 +48,7 @@ interface JsonRpcInbound {
   params?: unknown;
 }
 
-export type ConnectionStatus =
-  | 'idle'
-  | 'connecting'
-  | 'open'
-  | 'reconnecting'
-  | 'closed';
+export type ConnectionStatus = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed';
 
 export class BrowserRpcClient {
   private ws: WebSocket | null = null;
@@ -206,9 +201,7 @@ export class BrowserRpcClient {
     }
     // Notification — route per-request first, then fall through to global.
     if (frame.method) {
-      const params = frame.params as
-        | { requestId?: JsonRpcId }
-        | undefined;
+      const params = frame.params as { requestId?: JsonRpcId } | undefined;
       const rid = params?.requestId;
       if (rid !== undefined) {
         const pending = this.pending.get(rid);

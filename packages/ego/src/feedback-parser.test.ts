@@ -4,10 +4,7 @@ import { LlmFeedbackParser, type FeedbackParserModelAdapter } from './feedback-p
 class ScriptedModel implements FeedbackParserModelAdapter {
   public calls: Array<string> = [];
   constructor(private readonly response: string) {}
-  async *stream(req: {
-    systemPrompt: string;
-    messages: Array<{ role: string; content: string }>;
-  }) {
+  async *stream(req: { systemPrompt: string; messages: Array<{ role: string; content: string }> }) {
     const first = req.messages[0];
     this.calls.push(typeof first?.content === 'string' ? first.content : '');
     yield { type: 'text_delta' as const, text: this.response };
@@ -34,7 +31,9 @@ describe('LlmFeedbackParser', () => {
   });
 
   it('accepts code-fenced JSON output', async () => {
-    const model = new ScriptedModel('```json\n[{"type":"positive-feedback","context":"x","behavior":"y"}]\n```');
+    const model = new ScriptedModel(
+      '```json\n[{"type":"positive-feedback","context":"x","behavior":"y"}]\n```',
+    );
     const parser = new LlmFeedbackParser({ model });
     const result = await parser.parse({
       userMessage: '좋아!',
@@ -103,7 +102,12 @@ describe('LlmFeedbackParser', () => {
   it('accepts a negative-feedback signal with severity', async () => {
     const model = new ScriptedModel(
       JSON.stringify([
-        { type: 'negative-feedback', context: 'code review', behavior: 'missed JWT bug', severity: 'strong' },
+        {
+          type: 'negative-feedback',
+          context: 'code review',
+          behavior: 'missed JWT bug',
+          severity: 'strong',
+        },
       ]),
     );
     const parser = new LlmFeedbackParser({ model });

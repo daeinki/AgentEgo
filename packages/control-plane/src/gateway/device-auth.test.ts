@@ -60,8 +60,7 @@ describe('DeviceAuthStore', () => {
     const dev = store.enroll(PUBKEY_A, 'laptop');
     const { token } = store.issueSessionToken(dev.deviceId);
     const parts = token.split('.');
-    parts[parts.length - 1] =
-      parts[parts.length - 1]!.slice(0, -2) + '00';
+    parts[parts.length - 1] = parts[parts.length - 1]!.slice(0, -2) + '00';
     const res = store.verifySessionToken(parts.join('.'));
     expect(res.ok).toBe(false);
     expect(res.reason).toBe('bad signature');
@@ -151,4 +150,3 @@ describe('TokenAuth × DeviceAuthStore', () => {
     expect(auth.verifyBearer('Bearer v1.aaa.bbb.ccc.ddd').ok).toBe(false);
   });
 });
-

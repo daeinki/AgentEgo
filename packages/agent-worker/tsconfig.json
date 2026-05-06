@@ -5,9 +5,5 @@
     "rootDir": "src"
   },
   "include": ["src"],
-  "references": [
-    { "path": "../core" },
-    { "path": "../control-plane" },
-    { "path": "../skills" }
-  ]
+  "references": [{ "path": "../core" }, { "path": "../control-plane" }, { "path": "../skills" }]
 }

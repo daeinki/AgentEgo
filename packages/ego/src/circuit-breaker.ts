@@ -3,7 +3,7 @@ import { nowMs } from '@agent-platform/core';
 export type CircuitState = 'closed' | 'open' | 'half-open';
 
 export interface CircuitBreakerConfig {
-  threshold: number;       // consecutive failures before tripping
+  threshold: number; // consecutive failures before tripping
   cooldownMinutes: number; // how long to stay open before probing
 }
 

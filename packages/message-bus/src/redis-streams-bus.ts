@@ -1,10 +1,5 @@
 import type { StandardMessage } from '@agent-platform/core';
-import type {
-  BusEntry,
-  MessageBus,
-  SubscribeOptions,
-  Subscription,
-} from './bus.js';
+import type { BusEntry, MessageBus, SubscribeOptions, Subscription } from './bus.js';
 
 /**
  * Minimal ioredis-like client surface we depend on. Keeping this narrow

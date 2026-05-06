@@ -269,15 +269,11 @@ function escapeRegex(s) {
 
 function renderToc(index) {
   const head = 'Table of contents — `visualize_architecture.md`\n';
-  const body = index.toc
-    .map((s) => `  §${String(s.num).padStart(2, ' ')}. ${s.title}`)
-    .join('\n');
+  const body = index.toc.map((s) => `  §${String(s.num).padStart(2, ' ')}. ${s.title}`).join('\n');
   const blocks =
     index.blockIndex.size > 0
       ? `\n\nBlock index (→ section):\n` +
-        [...index.blockIndex.entries()]
-          .map(([k, v]) => `  [${k}] → §${v}`)
-          .join('\n')
+        [...index.blockIndex.entries()].map(([k, v]) => `  [${k}] → §${v}`).join('\n')
       : '';
   return head + body + blocks;
 }

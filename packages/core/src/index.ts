@@ -64,12 +64,7 @@ export type {
   MessageSummary,
   TurnSummary,
 } from './schema/memory.js';
-export type {
-  TraceContext,
-  TurnMetrics,
-  AuditEntry,
-  AuditTag,
-} from './schema/observability.js';
+export type { TraceContext, TurnMetrics, AuditEntry, AuditTag } from './schema/observability.js';
 export type { RouteDecision, RoutingRule } from './schema/routing.js';
 export type {
   Permission,

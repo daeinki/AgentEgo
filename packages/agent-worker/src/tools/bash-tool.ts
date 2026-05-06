@@ -28,9 +28,7 @@ export function bashTool(
     description: 'Execute a shell script in an isolated container.',
     riskLevel: 'critical',
     runsInContainer: true,
-    permissions: [
-      { type: 'process', access: 'execute', commands: ['/bin/sh'] },
-    ],
+    permissions: [{ type: 'process', access: 'execute', commands: ['/bin/sh'] }],
     inputSchema: {
       type: 'object',
       required: ['script'],

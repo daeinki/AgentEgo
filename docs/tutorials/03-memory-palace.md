@@ -64,7 +64,9 @@ async function main() {
   console.log('  curl -X POST http://127.0.0.1:' + platform.ports.gateway + '/messages \\');
   console.log('    -H "Authorization: Bearer dev-token" \\');
   console.log('    -H "Content-Type: application/json" \\');
-  console.log('    -d \'{"id":"m1","traceId":"t1","timestamp":1700000000,"channel":{"type":"webchat","id":"c","metadata":{}},"sender":{"id":"u","isOwner":true},"conversation":{"type":"dm","id":"conv-1"},"content":{"type":"text","text":"안녕"}}\'');
+  console.log(
+    '    -d \'{"id":"m1","traceId":"t1","timestamp":1700000000,"channel":{"type":"webchat","id":"c","metadata":{}},"sender":{"id":"u","isOwner":true},"conversation":{"type":"dm","id":"conv-1"},"content":{"type":"text","text":"안녕"}}\'',
+  );
 
   process.on('SIGINT', async () => {
     await platform.shutdown();
@@ -130,6 +132,7 @@ cat ~/.agent/memory/wings/knowledge/technical.md
 ```
 
 출력:
+
 ```markdown
 ## 2026-04-17T12:34:56.123Z — turn conv-1
 
@@ -142,6 +145,7 @@ cat ~/.agent/memory/wings/knowledge/technical.md
 `knowledge/technical` wing 으로 배정합니다.
 
 SQLite 에서도 확인:
+
 ```bash
 sqlite3 ~/.agent/memory/palace.db
 
@@ -166,6 +170,7 @@ curl -X POST http://127.0.0.1:18789/messages \
 ```
 
 내부 흐름:
+
 1. EGO S1/S2 — `complexity: 'complex'`, `intent: 'question'` → 빠른 경로 못 탐
 2. 깊은 경로 진입 → `gatherContext` 에서 메모리 검색
 3. 쿼리: "프론트엔드 스택 상태 관리 리팩토링" → BM25 + vector 하이브리드 매칭
@@ -184,6 +189,7 @@ console.log('Metrics:', platform.metrics.snapshot());
 ```
 
 예시 출력 (메시지 3개 후):
+
 ```js
 {
   turns: 3,
@@ -226,6 +232,7 @@ await mem.close();
 ```
 
 응답:
+
 ```json
 [
   {

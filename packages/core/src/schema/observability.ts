@@ -51,7 +51,12 @@ export const AuditEntry = Type.Object({
   timestamp: Type.Integer({ minimum: 0 }),
   traceId: Type.String(),
   tag: AuditTag,
-  actor: Type.Union([Type.Literal('user'), Type.Literal('agent'), Type.Literal('system'), Type.Literal('ego')]),
+  actor: Type.Union([
+    Type.Literal('user'),
+    Type.Literal('agent'),
+    Type.Literal('system'),
+    Type.Literal('ego'),
+  ]),
   action: Type.String(),
   target: Type.Optional(Type.String()),
   parameters: Type.Optional(Type.Record(Type.String(), Type.Unknown())),

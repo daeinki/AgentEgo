@@ -40,11 +40,20 @@ const ownerPolicy: SessionPolicy = {
   resourceLimits: { maxCpuSeconds: 1, maxMemoryMb: 1, maxDiskMb: 1, networkEnabled: false },
 };
 
-const allowAll: Contracts.CapabilityGuard = { async check() { return { allowed: true }; } };
+const allowAll: Contracts.CapabilityGuard = {
+  async check() {
+    return { allowed: true };
+  },
+};
 
 const mkSandbox = (log: string[]): Contracts.ToolSandbox => ({
   async acquire() {
-    return { id: 'sb', status: 'ready', startedAt: nowMs(), resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 } };
+    return {
+      id: 'sb',
+      status: 'ready',
+      startedAt: nowMs(),
+      resourceUsage: { cpuSeconds: 0, memoryMb: 0, diskMb: 0 },
+    };
   },
   async execute(_sb, name, args) {
     log.push(`${name}:${JSON.stringify(args)}`);
@@ -65,7 +74,9 @@ function ctxWith(tools: Contracts.ToolDescriptor[], text: string): Contracts.Rea
   };
 }
 
-async function collect(iter: AsyncIterable<Contracts.ReasoningEvent>): Promise<Contracts.ReasoningEvent[]> {
+async function collect(
+  iter: AsyncIterable<Contracts.ReasoningEvent>,
+): Promise<Contracts.ReasoningEvent[]> {
   const out: Contracts.ReasoningEvent[] = [];
   for await (const ev of iter) out.push(ev);
   return out;
@@ -76,7 +87,9 @@ describe('HybridReasoner', () => {
     const model = new ScriptedAdapter(['답변']);
     const reasoner = new HybridReasoner(model);
     const events = await collect(reasoner.run(ctxWith([], '지금 몇 시야?')));
-    const final = events.find((e) => e.kind === 'final') as { state: { mode: string; plan?: unknown } };
+    const final = events.find((e) => e.kind === 'final') as {
+      state: { mode: string; plan?: unknown };
+    };
     expect(final.state.mode).toBe('react');
     expect(final.state.plan).toBeUndefined();
   });
@@ -124,7 +137,10 @@ describe('HybridReasoner', () => {
       reasoner.run(ctxWith(tools, '파일 읽고 요약해. 그리고 CSV 저장해.')),
     );
     expect(execLog).toEqual(['a:{}', 'b:{}']);
-    const final = events.find((e) => e.kind === 'final') as { text: string; state: { mode: string; plan?: unknown } };
+    const final = events.find((e) => e.kind === 'final') as {
+      text: string;
+      state: { mode: string; plan?: unknown };
+    };
     expect(final.state.mode).toBe('plan_execute');
     expect(final.state.plan).toBeDefined();
     expect(final.text).toBe('완료');
@@ -174,9 +190,7 @@ describe('HybridReasoner', () => {
       { name: 'b', description: 'b', inputSchema: {} },
       { name: 'c', description: 'c', inputSchema: {} },
     ];
-    const events = await collect(
-      reasoner.run(ctxWith(tools, '파일 읽고 요약해. 그리고 저장해.')),
-    );
+    const events = await collect(reasoner.run(ctxWith(tools, '파일 읽고 요약해. 그리고 저장해.')));
     const final = events.find((e) => e.kind === 'final') as { state: { mode: string } };
     expect(final.state.mode).toBe('react');
   });

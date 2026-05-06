@@ -14,7 +14,10 @@ interface LoadedTool {
   name: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
-  execute(args: unknown, ctx?: unknown): Promise<{
+  execute(
+    args: unknown,
+    ctx?: unknown,
+  ): Promise<{
     toolName: string;
     success: boolean;
     output?: string;
@@ -24,10 +27,7 @@ interface LoadedTool {
 }
 
 interface Factory {
-  createTools(ctx: {
-    manifest: { id: string; version: string };
-    installDir: string;
-  }): LoadedTool[];
+  createTools(ctx: { manifest: { id: string; version: string }; installDir: string }): LoadedTool[];
 }
 
 describe('builtin architecture-lookup skill', () => {

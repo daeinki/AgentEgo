@@ -7,6 +7,7 @@
 > **스코프**: 설계 리포(`D:\ai\claude`) + 구현 리포(`D:\ai\agent-platform`) v0.8.0 기준. TUI/Webapp → Gateway RPC → Control Plane → EGO → Agent Runner → Reasoner → (도구/모델/스킬) → 스트림 복귀 경로를 다룬다. TUI 와 Webapp 은 동일 `/rpc` 계약 위에서 돌아가며 인증만 다르다 — §14 "Webapp 서피스 차이" 에서 델타만 서술한다. webchat/HTTP/채널 어댑터는 동일 `handler()` 를 공유하므로 §11 에 짧게만 언급한다. 파이프라인에 가로지르는 **TraceLogger** 관찰성 레이어는 §13 에서 별도 서술한다.
 >
 > **v0.8 변경 요약** (2026-04-29, 채널 어댑터 보강 트리오 + 트레이스 블록 확장 + 워크플로우 DSL 확장 + planner JSON 모드 + 메모리 액세스 로깅 + 시맨틱 step 보존):
+>
 > - **§11 채널별 차이 — Discord Resume + sharding** ([packages/channels/discord/src/gateway-client.ts](D:\ai\agent-platform\packages\channels\discord\src\gateway-client.ts)): READY dispatch 의 `session_id` + `resume_gateway_url` 을 캐시 → close 코드별 RESUME(op6) vs re-IDENTIFY 분기 (4007/4009 → 세션 폐기 후 IDENTIFY, 4004/4010-4014 → fatal abort, 그 외 → resume_gateway_url 로 재접속). 지수 백오프(1→30s cap), opt-out `autoReconnect:false`. 신규 `DiscordShardManager` 가 N 개 클라이언트를 5s 간격으로 순차 IDENTIFY (Discord 의 per-bucket rate limit 대응). `onLifecycle` 콜백으로 connecting/identify/resume/ready/resumed/invalid_session/close/reconnect_scheduled/fatal 의 9 가지 라이프사이클 노출.
 > - **§11 채널별 차이 — Slack Socket Mode** ([packages/channels/slack/src/socket-mode-transport.ts](D:\ai\agent-platform\packages\channels\slack\src\socket-mode-transport.ts) 신규): `SlackConfig` 가 `transport: 'http' | 'socket'` discriminated union. Socket Mode 는 `apps.connections.open` → 단명 wss URL → events_api envelope ack(3s 이내 `{envelope_id}` 반송) + `disconnect{refresh_requested}` 시 즉시 재접속. 번역 레이어 `slack-events.ts` 추출로 두 트랜스포트가 `SlackEventsRequest` 동일 스키마 공유.
 > - **§11 채널별 차이 — WhatsApp Cloud API** ([packages/channels/whatsapp/src/cloud-api-client.ts](D:\ai\agent-platform\packages\channels\whatsapp\src\cloud-api-client.ts) 신규, `./cloud` 서브패스 export): baileys 옆에 `CloudApiWhatsAppClient` 가 두 번째 `WhatsAppClient` 구현으로 추가. 아웃바운드 = `POST graph.facebook.com/v20.0/{phone-id}/messages` Bearer. 인바운드 = 자체 webhook HTTP 서버, GET `hub.verify_token` / POST `X-Hub-Signature-256` HMAC 검증, `entry[].changes[].value.messages[]` → `WhatsAppMessage` (text/button/interactive/image/video/document caption). Cloud API 는 그룹 챗 미노출 → `isGroup: false` 고정.
@@ -17,6 +18,7 @@
 > - **곁가지 [workflow] DSL 확장** ([packages/workflow/src/schema.ts](D:\ai\agent-platform\packages\workflow\src\schema.ts) `kind:` 추가): `tool_call`/`sequence`/`parallel`/`conditional`/`loop` 다섯 종에 더해 `call` (function 호출) / `return` (값 반환) / `try` (try-catch-finally, catch 가 fresh scope frame) / `scope` (lexical 변수 스코프) 4 종 추가. depth limit 으로 무한 재귀 차단. `WorkflowTaskRunner` (cron 워크플로우) 도 동일 인터프리터 사용.
 >
 > **v0.7 변경 요약** (2026-04-25, Channels/Cron 실데이터 + Reasoning trigger #3 + device CLI):
+>
 > - **[C2'] ChannelRegistry 실구현** — `PlatformChannelRegistry` ([packages/control-plane/src/gateway/platform-channel-registry.ts](D:\ai\agent-platform\packages\control-plane\src\gateway\platform-channel-registry.ts)) 신규. `platform.ts` 가 WebChat 부팅 시 `register('webchat', 'webchat', adapter)` 호출, `onMessage` 수신마다 `recordEvent`, catch 에서 `recordError`, shutdown 에서 `deregister`. `ChannelAdapter.healthCheck()` 를 온디맨드 `refreshHealth(id)` 경로로 호출해 status 파생. `channels.list` / `channels.status` RPC 가 이제 실 데이터 반환 (이전에는 빈 배열).
 > - **[C2''] CronRegistry + Scheduler 실구현 (option B)** — `packages/scheduler/` 신규 패키지. `CronTask` discriminated union (chat/bash/workflow) + `TaskRunner` 인터페이스. `SchedulerService` 가 `node-cron` 으로 스케줄 관리 + 단일동시성 보장(overlap 시 skip, runNow 는 거절). 3 runner — `ChatTaskRunner`(platform handler 직접 호출, EGO 자동 경유, `sessionStrategy: 'pinned'|'fresh'`), `BashTaskRunner`(ToolSandbox + ownerPolicy 경유, 직접 spawn 금지), `WorkflowTaskRunner`(`executeWorkflow` 래핑, sandbox 1회 acquire per workflow). tasks.json JSON5 스타일 (주석·trailing comma 허용). v1 스코프: RPC mutation 없음(재시작으로 반영), 실행 이력 인메모리, 실패 정책 log-and-continue. `cron.list` / `cron.runNow` RPC 가 이제 실 데이터 반환.
 > - **[R3] Replan 트리거 #3 구현** — `agent-orchestration.md` §4.4 의 세 번째 replan 트리거 (egoRelevance>0.8 + goalUpdates 존재) 구현. EGO `Cognition` + `goalUpdates[]` 를 metadata `_egoCognition` / `_egoGoalUpdates` 로 전달 → `AgentRunner` 가 추출해 `ReasoningContext.egoCognition` / `goalUpdates` 로 포워드 → `PlanExecuteExecutor` 가 초기 plan 직후 조건 충족 시 재계획 1회 발화 (`reason: 'goal_updates_high_relevance'`). `replanLimit` 공유로 트리거 #1 과 합쳐도 상한 초과 없음. 계획은 goal-update 맥락을 surface 한 전용 프롬프트로 다시 생성되며, 성공 step id 는 트리거 #1 과 동일 규칙으로 보존.
@@ -24,6 +26,7 @@
 > - **§14.6 Webapp Control 폴링 주의** 갱신: 더 이상 "registered adapter 없음" 상태가 아님 — `channels.list` 는 실제 기동된 어댑터(현재 webchat 1개)를, `cron.list` 는 `<stateDir>/scheduler/tasks.json` 에 정의된 태스크를 반환.
 >
 > **v0.6 변경 요약** (ADR-010 반영):
+>
 > - **신규 §14 "Webapp 서피스"**: `packages/webapp` (Vite + Lit 3) 도입 반영. TUI 의 [T1]~[T3] 에 대응하는 [B1]~[B3] 브라우저 블록, [D1] 디바이스 인증 컨트롤러, [G4] `/device/*` 라우트, [G5] WS `Sec-WebSocket-Protocol: bearer.<token>` 인증 분기.
 > - **신규 §15 "Phase-Format 공유"**: `formatPhase`/`PhaseIndicator`/`PHASE_LABELS`/`PHASE_ICONS` 가 `packages/core/src/schema/phase-format.ts` 로 승격 — TUI `<PhaseLine>` 과 Webapp `<phase-line>` 양쪽이 import. 서브패스 export `@agent-platform/core/phase-format`.
 > - **§3 Gateway 라우트 테이블 확장**: `/device/enroll`(마스터 Bearer 필요) · `/device/challenge` · `/device/assert` · `/ui/*` 정적 서빙. ApiGateway `TokenAuth` 에 secondary verifier (DeviceAuthStore) 체인 추가.
@@ -31,13 +34,15 @@
 > - **§0 전체 다이어그램**: TUI 위에 Webapp 블록이 병렬 배치. 두 서피스 모두 동일 `chat.phase` 스트림을 구독.
 >
 > **v0.5 변경 요약**:
+>
 > - [E1] EgoLayer 에러 진단 확장: `SchemaValidationError` 가 실제 분류 `tag`(llm_invalid_json / llm_schema_mismatch / llm_out_of_range / llm_inconsistent_action / llm_invalid_target) + 파싱된 invalid `candidate` 를 전달. E1 `error` trace payload 가 `tag` · `validationErrors[{path,message}]` (5건 cap) · `candidatePreview` (800자 cap) 를 포함 — 이전에는 `error` 문자열만 남았음
-> - [E1] LLM 프롬프트 그라운딩: `buildUserPrompt` 가 `EgoThinkingResult` JSON Schema 를 전문 주입 + action-contingent 필수 필드 규칙(enrich→enrichment, redirect→redirect.target*, direct_response→directResponse.text) 명시 → `llm_schema_mismatch` 발생 빈도 감소
+> - [E1] LLM 프롬프트 그라운딩: `buildUserPrompt` 가 `EgoThinkingResult` JSON Schema 를 전문 주입 + action-contingent 필수 필드 규칙(enrich→enrichment, redirect→redirect.target\*, direct_response→directResponse.text) 명시 → `llm_schema_mismatch` 발생 빈도 감소
 > - [core/time.ts] `TimeoutError extends Error` 추가(`label`, `timeoutMs`, `name='TimeoutError'`). `withTimeout` 이 이 클래스를 throw. [E1] layer 의 timeout 판정이 `TimeoutError` 를 인식해 `ego_timeout` 태그로 정확히 기록(이전에는 never-thrown `EgoTimeoutError` 만 체크해 모든 pipeline 타임아웃이 `ego_runtime_error` 로 오분류)
 > - [K1] Skill loader: 레거시 `call(args, ctx)` 메서드를 `execute(args, ctx)` 로 자동 정규화 — agent 가 과거 convention 으로 작성한 스킬이 `loaded.execute is not a function` 으로 silent 실패하던 회귀 수정. 다른 tool 필드(description/permissions/riskLevel/inputSchema/runsInContainer/dockerCommand)는 그대로 보존
 > - [K2] 내장 스킬 목록: `trace-lookup` 추가. 에이전트가 자신의 파이프라인 trace 를 조회하는 `trace.list` / `trace.show` / `trace.last` 3 툴 노출. self-contained(`node:sqlite` 만 사용) + read-only(`<stateDir>/trace/traces.db` open with `{ readOnly: true }`)
 >
 > **v0.4 변경 요약**:
+>
 > - ADR-010 TUI Phase Event Stream 엔드투엔드 반영: `chat.phase` JSON-RPC notification 추가 ([G3] 발행, [T3] 수신), 13값 Phase 어휘(`received → ego_judging → reasoning_route → planning|tool_call|replan → streaming_response → finalizing → complete|aborted|error`)
 > - [P1] Platform handler: EGO 진입 직전 `ego_judging` phase emit, runner 호출에 `ctx.emitPhase` 전달
 > - [W1] AgentRunner: 4번째 인자 `onPhase` 콜백 추가 — `reasoning_route`(with reasoningMode), 첫 delta 에서 `streaming_response` 1회, ReasoningStep kind → phase 매핑(tool_call/planning/replan)
@@ -46,6 +51,7 @@
 > - [K2] 신규 블록: `seedBuiltinSkills` 부트스트랩 + `architecture-lookup` 내장 스킬. gateway 기동 시 `packages/skills/builtin/*` 를 `~/.agent/skills/*/` 로 idempotent 시드(버전 비교 기반 업그레이드, 사용자 수정 보존). `architecture.lookup` + `architecture.search` 두 툴 노출 — 본 문서 자체를 런타임 에이전트가 섹션 단위로 조회 가능
 >
 > **v0.3 변경 요약**:
+>
 > - ADR-010 반영: [C2] SessionStore `getRecentEvents` → `loadHistory`, `appendEvent`/`loadHistory` 공개 계약, `reasoning_step` event_type 공식 포함
 > - [W1] AgentRunner: `session_resolved` · `session_events_appended` 관측, 턴당 `reasoning_step` best-effort append
 > - [E1] EgoLayer: `fastPath.enabled` 게이트 + `EGO_FORCE_DEEP` env, `suggestTools` 힌트를 PromptBuilder 로 전파
@@ -333,25 +339,26 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 
 본 문서 전반에서 동일한 식별자를 재사용한다:
 
-| Prefix | 레이어 | 위치 |
-|--------|--------|------|
-| `T*` | TUI (Terminal UI / Ink) | `agent-platform/packages/tui/` |
-| `G*` | Gateway (HTTP + JSON-RPC over WS) | `packages/control-plane/src/gateway/` + `packages/gateway-cli/src/rpc/` |
-| `C*` | Control plane — 라우팅 / 세션 | `packages/control-plane/src/session/` |
-| `P*` | Platform wiring + handler | `packages/cli/src/runtime/platform.ts` |
-| `E*` | EGO 레이어 | `packages/ego/src/` |
-| `W*` | Worker (AgentRunner + Prompt) | `packages/agent-worker/src/runner/`, `…/prompt/` |
-| `R*` | Reasoner (ADR-009) | `packages/agent-worker/src/reasoning/` |
-| `M*` | ModelAdapter | `packages/agent-worker/src/model/`, `packages/cli/src/runtime/model-adapter.ts` |
-| `S*` | Sandbox / CapabilityGuard | `packages/agent-worker/src/security`, `…/tools` |
-| `K*` | LiveToolRegistry + LocalSkillRegistry (U10) | `packages/agent-worker/src/tools/live-registry.ts`, `packages/skills/src/` |
-| `X*` | 외부/곁가지 (memory, audit, metrics) | `packages/memory/`, `…/ego/audit-log.ts`, `…/observability/` |
+| Prefix | 레이어                                      | 위치                                                                            |
+| ------ | ------------------------------------------- | ------------------------------------------------------------------------------- |
+| `T*`   | TUI (Terminal UI / Ink)                     | `agent-platform/packages/tui/`                                                  |
+| `G*`   | Gateway (HTTP + JSON-RPC over WS)           | `packages/control-plane/src/gateway/` + `packages/gateway-cli/src/rpc/`         |
+| `C*`   | Control plane — 라우팅 / 세션               | `packages/control-plane/src/session/`                                           |
+| `P*`   | Platform wiring + handler                   | `packages/cli/src/runtime/platform.ts`                                          |
+| `E*`   | EGO 레이어                                  | `packages/ego/src/`                                                             |
+| `W*`   | Worker (AgentRunner + Prompt)               | `packages/agent-worker/src/runner/`, `…/prompt/`                                |
+| `R*`   | Reasoner (ADR-009)                          | `packages/agent-worker/src/reasoning/`                                          |
+| `M*`   | ModelAdapter                                | `packages/agent-worker/src/model/`, `packages/cli/src/runtime/model-adapter.ts` |
+| `S*`   | Sandbox / CapabilityGuard                   | `packages/agent-worker/src/security`, `…/tools`                                 |
+| `K*`   | LiveToolRegistry + LocalSkillRegistry (U10) | `packages/agent-worker/src/tools/live-registry.ts`, `packages/skills/src/`      |
+| `X*`   | 외부/곁가지 (memory, audit, metrics)        | `packages/memory/`, `…/ego/audit-log.ts`, `…/observability/`                    |
 
 ---
 
 ## 2. [T1~T3] TUI 레이어 — 사용자 입력 → RPC 송신
 
 ### [T1] InputBar
+
 - **파일**: [packages/tui/src/components/InputBar.tsx](D:\ai\agent-platform\packages\tui\src\components\InputBar.tsx)
 - **입력**: 터미널 키 이벤트 (Ink `useInput`). 부모로부터 `busy`, `placeholder`, `onSubmit`.
 - **처리**: `key.return` 이면 `text.trim()` 후 비어있지 않으면 `onSubmit(text)` 호출 + state 초기화.
@@ -359,6 +366,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 - **다음 블록**: [T2] App.send()
 
 ### [T2] App (최상위 컨테이너)
+
 - **파일**: [packages/tui/src/App.tsx](D:\ai\agent-platform\packages\tui\src\App.tsx)
 - **입력**: `AppProps { host, port, authToken, conversationId, sessionId? }` (CLI 인자), `InputBar.onSubmit`.
 - **처리**:
@@ -379,6 +387,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 - **다음 블록**: [T3] RpcClient
 
 ### [T3] RpcClient
+
 - **파일**: [packages/tui/src/lib/rpc-client.ts](D:\ai\agent-platform\packages\tui\src\lib\rpc-client.ts)
 - **입력**: `method`, `params`, `CallOptions { onNotification, timeoutMs, signal }`.
 - **처리**:
@@ -397,6 +406,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 ## 3. [G1~G3] Gateway 레이어 — 인증 · 디스패치 · chat.send
 
 ### [G1] ApiGateway
+
 - **파일**: [packages/control-plane/src/gateway/server.ts](D:\ai\agent-platform\packages\control-plane\src\gateway\server.ts)
 - **입력**: HTTP + WebSocket upgrade 요청 (gatewayPort, 기본 18790).
 - **처리**:
@@ -407,6 +417,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 - **핵심 API**: `gateway.mount(rpcServer)`, `gateway.start()`, `gateway.stop()`, `gateway.uptimeMs()`.
 
 ### [G2] RpcServer
+
 - **파일**: [packages/gateway-cli/src/rpc/server.ts](D:\ai\agent-platform\packages\gateway-cli\src\rpc\server.ts)
 - **입력**: 인증된 WebSocket + 메시지 이벤트.
 - **처리**:
@@ -423,6 +434,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 - **다음 블록**: `methods['chat.send']` → [G3].
 
 ### [G3] chat.send RPC Method
+
 - **파일**: [packages/gateway-cli/src/rpc/methods.ts](D:\ai\agent-platform\packages\gateway-cli\src\rpc\methods.ts) (`buildRpcMethods({ gateway, sessions, router, handler, shutdown, version, ports })` 에서 등록)
 - **입력**: `params = { text: string, conversationId?, sessionId?, agentId?, channelId?, senderId? }`, `ctx: RpcContext`.
 - **처리**:
@@ -445,9 +457,15 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
      ```ts
      const emitPhase = (phase, detail?) => {
        if (turnClosed) return;
-       const evt = { turnId: msg.traceId, sessionId, seq: phaseSeq++,
-                     at: Date.now(), phase, elapsedMs: Date.now() - turnStart,
-                     ...(detail ? { detail } : {}) };
+       const evt = {
+         turnId: msg.traceId,
+         sessionId,
+         seq: phaseSeq++,
+         at: Date.now(),
+         phase,
+         elapsedMs: Date.now() - turnStart,
+         ...(detail ? { detail } : {}),
+       };
        ctx.notify('chat.phase', { requestId, ...evt });
        if (isTerminalPhase(phase)) turnClosed = true;
      };
@@ -471,6 +489,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 ## 4. [C1~C2''] Control Plane — 라우팅 · 세션 · 레지스트리
 
 ### [C1] RuleRouter
+
 - **파일**: [packages/control-plane/src/session/router.ts](D:\ai\agent-platform\packages\control-plane\src\session\router.ts)
 - **입력**: `StandardMessage`.
 - **처리**:
@@ -479,6 +498,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 - **출력**: `RouteDecision = { agentId, sessionId, ruleId? }`.
 
 ### [C2] SessionStore
+
 - **파일**: [packages/control-plane/src/session/store.ts](D:\ai\agent-platform\packages\control-plane\src\session\store.ts) (SQLite `better-sqlite3`)
 - **주요 메서드** (ADR-010 반영):
   - `resolveSession(agentId, channelType, conversationId)` → `Session` (없으면 INSERT). `resolveSessionWithNewFlag` 로 `isNew` 반환.
@@ -518,8 +538,8 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 - **CronTask discriminated union**:
   ```ts
   type CronTask =
-    | { id; spec; enabled; type: 'chat';     chat:     ChatTaskConfig }
-    | { id; spec; enabled; type: 'bash';     bash:     BashTaskConfig }
+    | { id; spec; enabled; type: 'chat'; chat: ChatTaskConfig }
+    | { id; spec; enabled; type: 'bash'; bash: BashTaskConfig }
     | { id; spec; enabled; type: 'workflow'; workflow: WorkflowTaskConfig };
   ```
 - **저장소**: `<stateDir>/scheduler/tasks.json` (JSON5 스타일 — 주석/trailing comma 허용, 중복 id 거절). 파일 부재 시 빈 배열로 부팅. v1 은 RPC mutation 없음 — 편집 후 gateway 재시작.
@@ -560,6 +580,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 - **배선 상수**: `ownerPolicy('__default__')` 단일 인스턴스, `InProcessSandbox(toolMap)`, `PolicyCapabilityGuard(policies, toolMap)` (lazy `ownerPolicy(sessionId)` populate).
 
 ### 동일 handler 의 다른 엔트리
+
 - 본 문서는 TUI 경로를 추적하지만, 같은 `handler` 가:
   - WebChatAdapter (`packages/channels/webchat`) → `webchat.onMessage` → `router.route` → `handler(msg, { …, emit: webchat.emitDelta })` 경로로도 호출됨.
   - ApiGateway 내장 `/ws` envelope 경로 (`packages/control-plane/src/gateway/server.ts` 의 디폴트 mount).
@@ -570,6 +591,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 ## 6. [E1] EGO 레이어 — S1~S7 파이프라인 + 판단 네 가지
 
 ### [E1] EgoLayer
+
 - **파일**: [packages/ego/src/layer.ts](D:\ai\agent-platform\packages\ego\src\layer.ts) `processDetailed()`
 - **설계 매핑**: `ego-design.md` §5 "Two-tier 파이프라인" — S1(intake) + S2(normalize) 는 fast path, S3(perception) + S4(cognition) + S5(judgment) 는 단일 LLM 호출로 퓨전, S6(materialize) + S7(audit) 이 후처리.
 - **입력**: `(msg, { sessionId, agentId, recentHistory? })`.
@@ -608,6 +630,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
   - `withTimeout` 이 v0.5 이전에는 plain `Error` 를 던졌고 catch 블록은 `EgoTimeoutError instanceof` 로만 체크했기 때문에 모든 pipeline/memory-search 타임아웃이 silent 하게 `ego_runtime_error` 로 분류되는 회귀가 있었음 — `TimeoutError` 도입으로 정정.
 
 ### EGO 컴패니언 블록
+
 - **[X1] MemorySystem** — `PalaceMemorySystem` ([packages/memory/src/palace-memory.ts](D:\ai\agent-platform\packages\memory\src\palace-memory.ts)). `gatherContext` 가 `memory.search()` 로 관련 기억 인출 + `agent-runner` 가 `memory.ingest()` 로 매턴 기록.
 - **[X2] GoalStore** — `FileGoalStore`. 활성 목표 로드.
 - **[X3] PersonaManager** — `FilePersonaManager`. snapshot 텍스트 생성.
@@ -619,6 +642,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 ## 7. [W1] AgentRunner — 프롬프트 빌드 · 리즈너 위임 · 스트리밍
 
 ### [W1] AgentRunner.processTurn
+
 - **파일**: [packages/agent-worker/src/runner/agent-runner.ts](D:\ai\agent-platform\packages\agent-worker\src\runner\agent-runner.ts)
 - **입력**: `(sessionId, msg: StandardMessage, onChunk?(text), onPhase?(phase, detail?))`. 4번째 인자는 ADR-010 TUI Phase Event Stream 용 콜백 — [P1] 이 `ctx.emitPhase` 를 그대로 전달.
 - **처리** (ADR-010 + U10 반영):
@@ -647,6 +671,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 - **미구현(ADR-010 후속)**: `waiting_tool` phase — react-executor 가 샌드박스 acquire/release 경계를 ReasoningEvent 로 노출하지 않음. `executing_step.stepIndex/totalSteps` — plan-execute reasoner 가 단계 경계 이벤트를 노출할 때 활성화.
 
 ### [W2] PromptBuilder
+
 - **파일**: `packages/agent-worker/src/prompt/builder.ts`
 - **입력**: `{ systemPrompt, sessionEvents, userMessage, egoEnrichment? }`. `egoEnrichment.suggestedTools?: string[]`.
 - **처리** (ADR-010 매핑 규약):
@@ -660,6 +685,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 ## 8. [R1~R3] Reasoning 레이어 — Hybrid/ReAct/Plan-Execute
 
 ### [R1] HybridReasoner
+
 - **파일**: [packages/agent-worker/src/reasoning/hybrid-reasoner.ts](D:\ai\agent-platform\packages\agent-worker\src\reasoning\hybrid-reasoner.ts)
 - **입력**: `ReasoningContext` (§8.4).
 - **처리**:
@@ -670,12 +696,14 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 - **출력**: `AsyncIterable<ReasoningEvent>`.
 
 ### [R1a] DefaultComplexityRouter
+
 - **파일**: `packages/agent-worker/src/reasoning/complexity-router.ts`
 - **입력**: `{ userMessage, availableTools, egoPerception? }`.
 - **처리**: `egoPerception` 의 `requestType` / `estimatedComplexity` / `requiresToolUse` 를 우선 사용. 없으면 텍스트 길이·키워드 휴리스틱. 도구 없으면 항상 `'react'`.
 - **출력**: `'react' | 'plan_execute'`.
 
 ### [R2] ReactExecutor
+
 - **파일**: `packages/agent-worker/src/reasoning/react-executor.ts`
 - **입력**: `ReasoningContext`.
 - **처리** (ReAct 루프):
@@ -692,11 +720,12 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 - **출력**: `AsyncIterable<ReasoningEvent>`.
 
 ### [R3] PlanExecuteExecutor
+
 - **파일**: `packages/agent-worker/src/reasoning/plan-execute-executor.ts`
 - **입력**: `ReasoningContext` (+ 생성자에 `plannerModel` 주입 가능, `stepMatcher?: StepMatcher` v0.8 신규).
 - **처리**:
   1. `planner` 호출 (별도 system prompt + `responseFormat:{type:'json_object'}` v0.8 으로 JSON plan 강제 — OpenAI native, Anthropic 은 system 끝에 `{` prefill 로 우회). 파싱 실패 → ReAct 다운그레이드.
-  1b. **트리거 #3 (v0.7 신규)**: `ctx.egoCognition?.egoRelevance > 0.8 && (ctx.goalUpdates?.length ?? 0) > 0` 이면 plan 형성 직후 즉시 재계획 1회. 전용 prompt 가 이전 plan + goalUpdates 리스트 + `cognition.opportunities/risks/situationSummary` 를 surface — planner 가 목표 변경을 반영해 새 plan 을 생성. `replanLimit` 과 공유되므로 트리거 #1 (retry 소진) 과 합쳐 상한 초과 없음. replan 마커 `reason: 'goal_updates_high_relevance'` + 성공 step 보존 규칙 동일.
+     1b. **트리거 #3 (v0.7 신규)**: `ctx.egoCognition?.egoRelevance > 0.8 && (ctx.goalUpdates?.length ?? 0) > 0` 이면 plan 형성 직후 즉시 재계획 1회. 전용 prompt 가 이전 plan + goalUpdates 리스트 + `cognition.opportunities/risks/situationSummary` 를 surface — planner 가 목표 변경을 반영해 새 plan 을 생성. `replanLimit` 과 공유되므로 트리거 #1 (retry 소진) 과 합쳐 상한 초과 없음. replan 마커 `reason: 'goal_updates_high_relevance'` + 성공 step 보존 규칙 동일.
   2. `computeLevels(plan.steps)` — 의존성 그래프로 레벨 분리.
   3. 각 레벨:
      - `parallelExecution: true` → 동일 레벨 step 을 `Promise.all`, 이벤트는 step 순서대로 버퍼링 후 일괄 yield (trace 결정성 유지).
@@ -713,6 +742,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 ### §8.4 주요 데이터 쉐이프
 
 #### StandardMessage (core/schema)
+
 ```ts
 {
   id: string;
@@ -725,9 +755,11 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
            { type: 'media', … } | { type: 'reaction', emoji };
 }
 ```
+
 - **Enrichment convention**: `channel.metadata` 에 `_egoEnrichment`, `_egoDecisionId`, `_egoPerception`, `_egoCognition`, `_egoGoalUpdates` 가 부착될 수 있음 (EGO→Runner). `_egoCognition` 과 `_egoGoalUpdates` 는 v0.7 신규 — `PlanExecuteExecutor` 트리거 #3 가 소비.
 
 #### EgoDecision (판별 유니온)
+
 ```ts
 | { action: 'passthrough' }
 | { action: 'enrich', enrichedMessage: StandardMessage, metadata? }
@@ -736,6 +768,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 ```
 
 #### ReasoningContext (Contracts)
+
 ```ts
 {
   sessionId, agentId,
@@ -752,6 +785,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 ```
 
 #### ReasoningEvent (스트림 이벤트)
+
 ```ts
 | { kind: 'delta', text }
 | { kind: 'usage', inputTokens, outputTokens, cost? }
@@ -764,6 +798,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 ## 9. [M1][S1][K1] 모델 어댑터 & 샌드박스 & 라이브 레지스트리
 
 ### [M1] ModelAdapter
+
 - **파일**: [packages/cli/src/runtime/model-adapter.ts](D:\ai\agent-platform\packages\cli\src\runtime\model-adapter.ts) + `packages/agent-worker/src/model/`.
 - **입력**: `CompletionRequest { systemPrompt, messages, tools?, maxTokens?, temperature? }`. `messages[].toolCalls?` 는 assistant 턴이 이전 턴에서 호출한 도구를 replay 할 때 사용.
 - **처리**:
@@ -774,6 +809,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 - **출력**: `AsyncIterable<StreamChunk>` (`text_delta`, `tool_call_start/delta/end`, `usage`, `done`).
 
 ### [S1] ToolSandbox + CapabilityGuard
+
 - **파일**: `packages/agent-worker/src/security/capability-guard.ts` + `packages/agent-worker/src/tools/sandbox.ts`.
 - **플랫폼 배선** (platform.ts):
   ```
@@ -792,6 +828,7 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
 - **출력**: `ToolResult { toolName, success, output?, error?, durationMs }`.
 
 ### [K1] LiveToolRegistry + LocalSkillRegistry (U10)
+
 - **파일**:
   - [packages/agent-worker/src/tools/live-registry.ts](D:\ai\agent-platform\packages\agent-worker\src\tools\live-registry.ts)
   - [packages/agent-worker/src/tools/skill-tools.ts](D:\ai\agent-platform\packages\agent-worker\src\tools\skill-tools.ts)
@@ -817,13 +854,14 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
   - 후속 과제: DockerSandbox 로 skill 실행 이관 (`LoadedSkillTool.runsInContainer` 인터페이스 이미 존재).
 
 ### [K2] seedBuiltinSkills + 내장 스킬 (U11, v0.4 · v0.5 확장)
+
 - **파일**: [packages/skills/src/bootstrap.ts](D:\ai\agent-platform\packages\skills\src\bootstrap.ts), [packages/skills/builtin/](D:\ai\agent-platform\packages\skills\builtin)
 - **역할**: 리포지토리에 번들된 first-party 내장 스킬을 gateway 기동 시 `~/.agent/skills/<id>/` 로 idempotent 복사 — 이후 `mountInstalledSkills` 가 일반 설치본과 동일 경로로 툴을 노출.
 - **호출**: [P1] platform.ts 에서 `skillRegistry` 생성 직후, `skillAuthoringTools` 등록 전, `remountInstalledSkills()` 전에 한 번.
   ```ts
-  const seedResult = await seedBuiltinSkills(config.skillInstallRoot,
-                                             BUILTIN_SKILLS_ROOT,
-                                             { logger });
+  const seedResult = await seedBuiltinSkills(config.skillInstallRoot, BUILTIN_SKILLS_ROOT, {
+    logger,
+  });
   // → { seeded: [...], upgraded: [...], skipped: [...] }
   ```
 - **규약**:
@@ -845,7 +883,9 @@ TUI 와 Webapp 은 동일 `/rpc` 엔드포인트에 수렴한다 — 상단 서�
   - **프라이버시**: 양쪽 모두 `permissions: []`, `riskLevel: 'low'`. architecture-lookup 은 `installDir` 내부 단일 `.md` 파일만 읽고, trace-lookup 은 `<stateDir>/trace/traces.db` 를 read-only 로만 연다 (런타임 네트워크·셸 없음).
 
 ### 문서 재생성 플로우 (설계→구현 sync)
+
 `visualize_architecture.md` 는 설계 리포(`D:\ai\claude`)가 authoritative. 구현 리포의 `packages/skills/builtin/architecture-lookup/visualize_architecture.md` 는 미러.
+
 1. 설계 리포에서 §12 재생성 가이드대로 본문 갱신 + 헤더 버전 bump.
 2. 구현 리포의 번들 파일을 덮어쓰기 (`cp`).
 3. `packages/skills/builtin/architecture-lookup/manifest.json` 의 `version` bump + `contentSha256` 재계산 (`hashSkillDirectory` 와 동일 알고리즘, `manifest.json` 자신은 제외).
@@ -911,12 +951,12 @@ ModelAdapter.stream()        [M1]   yields {type:'text_delta', text}
 
 모두 `[P1] handler` 에 수렴한다. 본 문서가 추적하는 것은 **TUI → /rpc** 경로이지만, 다른 채널도 동일한 handler 를 호출한다:
 
-| 경로 | 트랜스포트 | emit 구현 | 주 엔트리 |
-|------|-----------|-----------|----------|
-| TUI | WebSocket `/rpc` (JSON-RPC 2.0) | `ctx.notify('chat.delta', …)` | `methods['chat.send']` |
-| WebChat 브라우저 | WebSocket `/webchat` | `webchat.emitDelta(conversationId, traceId, text)` | `webchat.onMessage((msg)=>…)` in [P1] |
-| ApiGateway `/ws` (envelope) | WebSocket envelope 프로토콜 | 엔벨로프 chunk 전송 | `ApiGateway` 내장 handler dispatch |
-| Telegram/Slack/Discord/WhatsApp | 각 Bot API | 각 어댑터 `sendMessage` | 채널 어댑터 `onMessage` → `router` → `handler` |
+| 경로                            | 트랜스포트                      | emit 구현                                          | 주 엔트리                                      |
+| ------------------------------- | ------------------------------- | -------------------------------------------------- | ---------------------------------------------- |
+| TUI                             | WebSocket `/rpc` (JSON-RPC 2.0) | `ctx.notify('chat.delta', …)`                      | `methods['chat.send']`                         |
+| WebChat 브라우저                | WebSocket `/webchat`            | `webchat.emitDelta(conversationId, traceId, text)` | `webchat.onMessage((msg)=>…)` in [P1]          |
+| ApiGateway `/ws` (envelope)     | WebSocket envelope 프로토콜     | 엔벨로프 chunk 전송                                | `ApiGateway` 내장 handler dispatch             |
+| Telegram/Slack/Discord/WhatsApp | 각 Bot API                      | 각 어댑터 `sendMessage`                            | 채널 어댑터 `onMessage` → `router` → `handler` |
 
 즉 `handler` 는 모든 경로가 공유하는 **단일 pipeline entry** 이고, 델타 emit 함수의 구현만 채널마다 다르다.
 
@@ -975,40 +1015,40 @@ ModelAdapter.stream()        [M1]   yields {type:'text_delta', text}
 
 ### 12.1. 블록별 소스 오브 트루스 (필독 파일)
 
-| 블록 | 파일 | 체크 포인트 |
-|------|------|------------|
-| [T1] InputBar | `packages/tui/src/components/InputBar.tsx` | `useInput` 키 핸들러, onSubmit 시그니처 |
-| [T2] App | `packages/tui/src/App.tsx` | `send()` 함수 내 `client.call('chat.send', params, opts)` 의 params 필드, onNotification 가 처리하는 method 이름 집합 |
-| [T3] RpcClient | `packages/tui/src/lib/rpc-client.ts` | `handleMessage()` 에서 notification 매칭 규칙(`params.requestId`), 재연결 정책 |
-| [G1] ApiGateway | `packages/control-plane/src/gateway/server.ts` | `mount()` 가능 path, Bearer 토큰 추출, 레이트리밋 세팅 |
-| [G2] RpcServer | `packages/gateway-cli/src/rpc/server.ts` | `RpcContext` 필드, `dispatch()` 분기 (`MethodNotFound` 등), `onShutdownRequested` 훅 |
-| [G3] RpcMethods | `packages/gateway-cli/src/rpc/methods.ts` | `chat.send` 가 만드는 `StandardMessage` 필드, `chat.accepted` / `chat.delta` notification 네이밍, `handlerCtx.emit` 시그니처 |
-| [C1] RuleRouter | `packages/control-plane/src/session/router.ts` | 매칭 규칙 우선순위, 기본 agentId |
-| [C2] SessionStore | `packages/control-plane/src/session/store.ts` | `addEvent` 스키마 변경, `getRecentEvents` 페이지 크기 |
-| [C2'] PlatformChannelRegistry | `packages/control-plane/src/gateway/platform-channel-registry.ts` | `ChannelDescriptor` 필드, register/recordEvent/recordError/deregister 의미, status 파생 규칙 |
-| [C2''] SchedulerService | `packages/scheduler/src/scheduler.ts` + `runners/*` + `json-task-store.ts` + `types.ts` | `CronTask` union (3 타입), node-cron `schedule` 옵션, 동시성 정책 (skip vs throw), runner 의 sandbox/policy 경로, tasks.json JSON5 파서 |
-| [P1] Platform handler | `packages/cli/src/runtime/platform.ts` | `startPlatform()` 의 배선, `handler` 내부의 withSpan 이름, `_egoPerception` / `_egoCognition` / `_egoGoalUpdates` / `_egoDecisionId` / `_egoEnrichment` metadata 키, scheduler start/stop 순서 |
-| [E1] EgoLayer | `packages/ego/src/layer.ts` | `processDetailed()` 단계별 로직, ProcessRecord 필드, `materializeDecision()` action 분기 |
-| [E1] LLM Factory | `packages/ego/src/llm-adapter-factory.ts` + `llm-adapter-openai.ts` + `llm-adapter.ts` + `llm-adapter-fallback.ts` + `llm-adapter-shared.ts` | `createEgoLlmAdapter(config)` 가 provider 분기 + env 프리플라이트 + fallback 합성. 새 provider 추가 시 이 팩토리만 확장. |
-| [W1] AgentRunner | `packages/agent-worker/src/runner/agent-runner.ts` | `processTurn()` 의 단계, `ReasoningContext` 조립 필드, 이벤트 kind 집합 |
-| [W2] PromptBuilder | `packages/agent-worker/src/prompt/builder.ts` | enrichment 삽입 위치, 메시지 순서 |
-| [R1] HybridReasoner | `packages/agent-worker/src/reasoning/hybrid-reasoner.ts` | `toolsWired` 판정 조건, `selectMode` 로직 |
-| [R1a] ComplexityRouter | `packages/agent-worker/src/reasoning/complexity-router.ts` | egoPerception 기반 선택 규칙, 휴리스틱 |
-| [R2] ReactExecutor | `packages/agent-worker/src/reasoning/react-executor.ts` | 루프 budget, tool_call 파싱, observation 주입 |
-| [R3] PlanExecuteExecutor | `packages/agent-worker/src/reasoning/plan-execute-executor.ts` | planner JSON 파싱 폴백, `computeLevels`, `parallelExecution`, replan 트리거 종류 (#1 retry / #3 goal-update — v0.7 추가), `TRIGGER_3_REL_THRESHOLD` 상수 |
-| [M1] ModelAdapter | `packages/cli/src/runtime/model-adapter.ts`, `packages/agent-worker/src/model/` | stream chunk 타입, `getModelInfo()` 출력 |
-| [S1] Sandbox/Guard | `packages/agent-worker/src/security/`, `packages/agent-worker/src/tools/` | `ownerPolicy` 정책, `InProcessSandbox.invoke()` 시그니처, bashTool Docker 옵션 |
-| TraceLogger (§13) | `packages/core/src/contracts/trace-logger.ts` + `packages/observability/src/sqlite-trace-log.ts` + `packages/observability/src/trace-query.ts` + `packages/cli/src/commands/trace.ts` | `TraceLogger` / `TraceEvent` / `TraceBlock` 계약, 각 블록 emit 포인트, `agent trace` CLI 의 출력 포맷, retention / env toggle 규약 |
+| 블록                          | 파일                                                                                                                                                                                  | 체크 포인트                                                                                                                                                                                    |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [T1] InputBar                 | `packages/tui/src/components/InputBar.tsx`                                                                                                                                            | `useInput` 키 핸들러, onSubmit 시그니처                                                                                                                                                        |
+| [T2] App                      | `packages/tui/src/App.tsx`                                                                                                                                                            | `send()` 함수 내 `client.call('chat.send', params, opts)` 의 params 필드, onNotification 가 처리하는 method 이름 집합                                                                          |
+| [T3] RpcClient                | `packages/tui/src/lib/rpc-client.ts`                                                                                                                                                  | `handleMessage()` 에서 notification 매칭 규칙(`params.requestId`), 재연결 정책                                                                                                                 |
+| [G1] ApiGateway               | `packages/control-plane/src/gateway/server.ts`                                                                                                                                        | `mount()` 가능 path, Bearer 토큰 추출, 레이트리밋 세팅                                                                                                                                         |
+| [G2] RpcServer                | `packages/gateway-cli/src/rpc/server.ts`                                                                                                                                              | `RpcContext` 필드, `dispatch()` 분기 (`MethodNotFound` 등), `onShutdownRequested` 훅                                                                                                           |
+| [G3] RpcMethods               | `packages/gateway-cli/src/rpc/methods.ts`                                                                                                                                             | `chat.send` 가 만드는 `StandardMessage` 필드, `chat.accepted` / `chat.delta` notification 네이밍, `handlerCtx.emit` 시그니처                                                                   |
+| [C1] RuleRouter               | `packages/control-plane/src/session/router.ts`                                                                                                                                        | 매칭 규칙 우선순위, 기본 agentId                                                                                                                                                               |
+| [C2] SessionStore             | `packages/control-plane/src/session/store.ts`                                                                                                                                         | `addEvent` 스키마 변경, `getRecentEvents` 페이지 크기                                                                                                                                          |
+| [C2'] PlatformChannelRegistry | `packages/control-plane/src/gateway/platform-channel-registry.ts`                                                                                                                     | `ChannelDescriptor` 필드, register/recordEvent/recordError/deregister 의미, status 파생 규칙                                                                                                   |
+| [C2''] SchedulerService       | `packages/scheduler/src/scheduler.ts` + `runners/*` + `json-task-store.ts` + `types.ts`                                                                                               | `CronTask` union (3 타입), node-cron `schedule` 옵션, 동시성 정책 (skip vs throw), runner 의 sandbox/policy 경로, tasks.json JSON5 파서                                                        |
+| [P1] Platform handler         | `packages/cli/src/runtime/platform.ts`                                                                                                                                                | `startPlatform()` 의 배선, `handler` 내부의 withSpan 이름, `_egoPerception` / `_egoCognition` / `_egoGoalUpdates` / `_egoDecisionId` / `_egoEnrichment` metadata 키, scheduler start/stop 순서 |
+| [E1] EgoLayer                 | `packages/ego/src/layer.ts`                                                                                                                                                           | `processDetailed()` 단계별 로직, ProcessRecord 필드, `materializeDecision()` action 분기                                                                                                       |
+| [E1] LLM Factory              | `packages/ego/src/llm-adapter-factory.ts` + `llm-adapter-openai.ts` + `llm-adapter.ts` + `llm-adapter-fallback.ts` + `llm-adapter-shared.ts`                                          | `createEgoLlmAdapter(config)` 가 provider 분기 + env 프리플라이트 + fallback 합성. 새 provider 추가 시 이 팩토리만 확장.                                                                       |
+| [W1] AgentRunner              | `packages/agent-worker/src/runner/agent-runner.ts`                                                                                                                                    | `processTurn()` 의 단계, `ReasoningContext` 조립 필드, 이벤트 kind 집합                                                                                                                        |
+| [W2] PromptBuilder            | `packages/agent-worker/src/prompt/builder.ts`                                                                                                                                         | enrichment 삽입 위치, 메시지 순서                                                                                                                                                              |
+| [R1] HybridReasoner           | `packages/agent-worker/src/reasoning/hybrid-reasoner.ts`                                                                                                                              | `toolsWired` 판정 조건, `selectMode` 로직                                                                                                                                                      |
+| [R1a] ComplexityRouter        | `packages/agent-worker/src/reasoning/complexity-router.ts`                                                                                                                            | egoPerception 기반 선택 규칙, 휴리스틱                                                                                                                                                         |
+| [R2] ReactExecutor            | `packages/agent-worker/src/reasoning/react-executor.ts`                                                                                                                               | 루프 budget, tool_call 파싱, observation 주입                                                                                                                                                  |
+| [R3] PlanExecuteExecutor      | `packages/agent-worker/src/reasoning/plan-execute-executor.ts`                                                                                                                        | planner JSON 파싱 폴백, `computeLevels`, `parallelExecution`, replan 트리거 종류 (#1 retry / #3 goal-update — v0.7 추가), `TRIGGER_3_REL_THRESHOLD` 상수                                       |
+| [M1] ModelAdapter             | `packages/cli/src/runtime/model-adapter.ts`, `packages/agent-worker/src/model/`                                                                                                       | stream chunk 타입, `getModelInfo()` 출력                                                                                                                                                       |
+| [S1] Sandbox/Guard            | `packages/agent-worker/src/security/`, `packages/agent-worker/src/tools/`                                                                                                             | `ownerPolicy` 정책, `InProcessSandbox.invoke()` 시그니처, bashTool Docker 옵션                                                                                                                 |
+| TraceLogger (§13)             | `packages/core/src/contracts/trace-logger.ts` + `packages/observability/src/sqlite-trace-log.ts` + `packages/observability/src/trace-query.ts` + `packages/cli/src/commands/trace.ts` | `TraceLogger` / `TraceEvent` / `TraceBlock` 계약, 각 블록 emit 포인트, `agent trace` CLI 의 출력 포맷, retention / env toggle 규약                                                             |
 
 ### 12.2. 설계 문서 쪽 소스 오브 트루스
 
-| 블록 | 설계 문서 | 섹션 |
-|------|----------|------|
-| 전체 아키텍처 | `harness-engineering.md` | §2.1, §3.2A |
-| EGO 파이프라인 | `ego-design.md` | §5 (S1~S7), §5.6 (confidence override), §5.7 (JSON validation + fallback) |
-| EGO persona | `ego-persona.md` | §4 evolution |
-| Reasoning | `agent-orchestration.md` | §1.2 (HybridReasoner), §2 (ReAct/Plan-Execute), §3 (replan) |
-| `current_process.md` | 구현 현황 · 잔여 작업 | §4 페이즈, §7 트레이드오프 |
+| 블록                 | 설계 문서                | 섹션                                                                      |
+| -------------------- | ------------------------ | ------------------------------------------------------------------------- |
+| 전체 아키텍처        | `harness-engineering.md` | §2.1, §3.2A                                                               |
+| EGO 파이프라인       | `ego-design.md`          | §5 (S1~S7), §5.6 (confidence override), §5.7 (JSON validation + fallback) |
+| EGO persona          | `ego-persona.md`         | §4 evolution                                                              |
+| Reasoning            | `agent-orchestration.md` | §1.2 (HybridReasoner), §2 (ReAct/Plan-Execute), §3 (replan)               |
+| `current_process.md` | 구현 현황 · 잔여 작업    | §4 페이즈, §7 트레이드오프                                                |
 
 ### 12.3. 변경 감지 루틴
 
@@ -1102,24 +1142,31 @@ v0.2 에서 추가된 구조적 트레이스 시스템. 각 블록이 무엇을 
 - **핵심 인터페이스**:
   ```ts
   interface TraceLogger {
-    event(entry: TraceEvent): void;          // fire-and-forget
-    span<T>(opts, fn): Promise<T>;           // enter/exit 자동 emit + 예외 시 error 이벤트
+    event(entry: TraceEvent): void; // fire-and-forget
+    span<T>(opts, fn): Promise<T>; // enter/exit 자동 emit + 예외 시 error 이벤트
     close?(): Promise<void>;
   }
   // v0.8: M1/X1/S1 추가 — 이전엔 R3 까지 8 종.
-  type TraceBlock = 'G3'|'C1'|'P1'|'E1'|'W1'|'R1'|'R2'|'R3'|'M1'|'X1'|'S1';
+  type TraceBlock = 'G3' | 'C1' | 'P1' | 'E1' | 'W1' | 'R1' | 'R2' | 'R3' | 'M1' | 'X1' | 'S1';
   interface TraceEvent {
-    traceId: string; sessionId?: string; agentId?: string;
+    traceId: string;
+    sessionId?: string;
+    agentId?: string;
     block: TraceBlock;
-    event: TraceEventName | (string & {});  // 캐노니컬 이름은 TraceEventNames 참고
-    timestamp: number;     // epoch ms
-    durationMs?: number;   // exit 이벤트에서만 세팅
-    summary?: string;      // v0.8: 1줄 자연어 요약 (≤120자) — `agent trace show` 가 우선 렌더
+    event: TraceEventName | (string & {}); // 캐노니컬 이름은 TraceEventNames 참고
+    timestamp: number; // epoch ms
+    durationMs?: number; // exit 이벤트에서만 세팅
+    summary?: string; // v0.8: 1줄 자연어 요약 (≤120자) — `agent trace show` 가 우선 렌더
     payload?: Record<string, unknown>;
     error?: string;
   }
   // v0.8: 모듈 경계용 컨텍스트 — TraceLogger 참조 없이 emit 하려는 서브시스템용
-  interface TraceCallContext { traceLogger: TraceLogger; traceId; sessionId?; agentId?; }
+  interface TraceCallContext {
+    traceLogger: TraceLogger;
+    traceId;
+    sessionId?;
+    agentId?;
+  }
   ```
 - **불변량**: `event()` / `span()` 은 절대 throw 하지 않는다. 쓰기 실패(DB 잠김 등)는 조용히 무시 — 계측이 파이프라인을 깨선 안 된다.
 - **기본 구현**: [`SqliteTraceLog`](D:\ai\agent-platform\packages\observability\src\sqlite-trace-log.ts) (SQLite WAL, `node:sqlite` 내장). Opt-out 은 [`NoopTraceLogger`](D:\ai\agent-platform\packages\core\src\contracts\trace-logger.ts).
@@ -1153,19 +1200,19 @@ v0.2 에서 추가된 구조적 트레이스 시스템. 각 블록이 무엇을 
 
 ### 13.3. 블록별 이벤트 매트릭스 (Phase A)
 
-| 블록 | 파일 | 이벤트 | 주요 payload |
-|------|------|--------|-------------|
-| **G3** | `packages/gateway-cli/src/rpc/methods.ts` | `enter` / `exit` / `error` | textPreview(80자), conversationId, channelId, senderId / usage |
-| **C1** | `packages/control-plane/src/session/router.ts` | `decision` | matchedRuleId, priority |
-| **P1** | `packages/cli/src/runtime/platform.ts` | `enter` / `exit` / `error` / `skill_mount_error` | egoAction (exit) / skillId, error (skill_mount) |
-| **E1** | `packages/ego/src/layer.ts` | `fast_exit` / `deep_path_start` / `decision` / `error` | intent, complexity, urgency / action, confidence, costUsd, egoDecisionId / `error` v0.5: `tag` (ego_timeout\|ego_runtime_error\|llm_*) + `validationErrors[{path,message}]` (5건 cap, SchemaValidationError 전용) + `candidatePreview` (800자 cap) |
-| **W1** | `packages/agent-worker/src/runner/agent-runner.ts` | `session_resolved` / `history_loaded` / `prompt_built` / `reasoner_invoked` / `stream_done` / `session_events_appended` / `session_append_failed` / `memory_ingested` | isNew, status / eventCount / priorMessageCount, hasEnrichment / availableTools / responseLen, inputTokens, outputTokens, costUsd / appendedCount / error / ingested |
-| **R1** | `packages/agent-worker/src/reasoning/hybrid-reasoner.ts` | `mode_selected` | mode, routerSuggested, planExecuteAvailable |
-| **R2** | `packages/agent-worker/src/reasoning/react-executor.ts` | `tool_call` | toolName, toolStatus(`ok\|denied\|error`), retry |
-| **R3** | `packages/agent-worker/src/reasoning/plan-execute-executor.ts` | `plan_generated` / `replan` / `downgraded_to_react` | stepCount / round, failedStepId / replanCount, reason |
-| **M1** | `packages/agent-worker/src/model/*-adapter.ts` (v0.8) | `stream_started` / `first_token` / `stream_done` / `stream_error` | model, role(planner/agent/ego), inputTokens, outputTokens, costUsd, ttftMs |
-| **X1** | `packages/memory/src/palace-memory.ts` (v0.8) | `memory_searched` / `memory_ingested` | query(40자 cap), hits, topScore / chunkCount, wing |
-| **S1** | `packages/agent-worker/src/tools/*-sandbox.ts` (v0.8) | `sandbox_acquired` / `sandbox_executed` / `sandbox_released` | sandboxKind(`in_process\|docker`) / toolName, exitCode, durationMs |
+| 블록   | 파일                                                           | 이벤트                                                                                                                                                                | 주요 payload                                                                                                                                                                                                                                        |
+| ------ | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **G3** | `packages/gateway-cli/src/rpc/methods.ts`                      | `enter` / `exit` / `error`                                                                                                                                            | textPreview(80자), conversationId, channelId, senderId / usage                                                                                                                                                                                      |
+| **C1** | `packages/control-plane/src/session/router.ts`                 | `decision`                                                                                                                                                            | matchedRuleId, priority                                                                                                                                                                                                                             |
+| **P1** | `packages/cli/src/runtime/platform.ts`                         | `enter` / `exit` / `error` / `skill_mount_error`                                                                                                                      | egoAction (exit) / skillId, error (skill_mount)                                                                                                                                                                                                     |
+| **E1** | `packages/ego/src/layer.ts`                                    | `fast_exit` / `deep_path_start` / `decision` / `error`                                                                                                                | intent, complexity, urgency / action, confidence, costUsd, egoDecisionId / `error` v0.5: `tag` (ego*timeout\|ego_runtime_error\|llm*\*) + `validationErrors[{path,message}]` (5건 cap, SchemaValidationError 전용) + `candidatePreview` (800자 cap) |
+| **W1** | `packages/agent-worker/src/runner/agent-runner.ts`             | `session_resolved` / `history_loaded` / `prompt_built` / `reasoner_invoked` / `stream_done` / `session_events_appended` / `session_append_failed` / `memory_ingested` | isNew, status / eventCount / priorMessageCount, hasEnrichment / availableTools / responseLen, inputTokens, outputTokens, costUsd / appendedCount / error / ingested                                                                                 |
+| **R1** | `packages/agent-worker/src/reasoning/hybrid-reasoner.ts`       | `mode_selected`                                                                                                                                                       | mode, routerSuggested, planExecuteAvailable                                                                                                                                                                                                         |
+| **R2** | `packages/agent-worker/src/reasoning/react-executor.ts`        | `tool_call`                                                                                                                                                           | toolName, toolStatus(`ok\|denied\|error`), retry                                                                                                                                                                                                    |
+| **R3** | `packages/agent-worker/src/reasoning/plan-execute-executor.ts` | `plan_generated` / `replan` / `downgraded_to_react`                                                                                                                   | stepCount / round, failedStepId / replanCount, reason                                                                                                                                                                                               |
+| **M1** | `packages/agent-worker/src/model/*-adapter.ts` (v0.8)          | `stream_started` / `first_token` / `stream_done` / `stream_error`                                                                                                     | model, role(planner/agent/ego), inputTokens, outputTokens, costUsd, ttftMs                                                                                                                                                                          |
+| **X1** | `packages/memory/src/palace-memory.ts` (v0.8)                  | `memory_searched` / `memory_ingested`                                                                                                                                 | query(40자 cap), hits, topScore / chunkCount, wing                                                                                                                                                                                                  |
+| **S1** | `packages/agent-worker/src/tools/*-sandbox.ts` (v0.8)          | `sandbox_acquired` / `sandbox_executed` / `sandbox_released`                                                                                                          | sandboxKind(`in_process\|docker`) / toolName, exitCode, durationMs                                                                                                                                                                                  |
 
 **이벤트 이름 canonical 화** (ADR-010): `packages/core/src/contracts/trace-logger.ts` 의 `TraceEventNames` 상수에 W1 관측 이벤트 어휘가 export 되어 있다 (`SESSION_RESOLVED`, `HISTORY_LOADED`, `MEMORY_SEARCHED`, `PROMPT_BUILT`, `REASONER_INVOKED`, `REASONING_STEP`, `REASONING_PLAN`, `REASONING_REPLAN`, `STREAM_DONE`, `SESSION_EVENTS_APPENDED`, `SESSION_APPEND_FAILED`, `MEMORY_INGESTED`). 구현체는 이 문자열을 그대로 `event` 필드에 넣어 다운스트림 로그 해석기의 키 역할을 수행한다.
 
@@ -1198,20 +1245,20 @@ CREATE INDEX idx_trace_events_block  ON trace_events(block, timestamp);
 - **파일**: [packages/cli/src/commands/trace.ts](D:\ai\agent-platform\packages\cli\src\commands\trace.ts) + [program.ts](D:\ai\agent-platform\packages\cli\src\program.ts).
 - **특징**: gateway 프로세스를 거치지 않고 SQLite 파일 직접 open (`openTraceDb`). gateway 가 내려가 있어도 과거 트레이스 조회 가능.
 
-| 서브명령 | 인자 / 옵션 | 동작 |
-|---------|-----------|------|
-| `agent trace list` | `-s --session`, `-n --limit` (기본 20) | 최근 트레이스 요약 (traceId, 세션, totalMs, egoAction, textPreview) |
-| `agent trace show <traceId>` | `--format text\|json` | 블록별 타임라인 렌더 (offset, block, event, duration, payload 요약) |
-| `agent trace last` | `-s --session`, `--format …` | 가장 최근 traceId 찾아 `show` 위임 |
-| `agent trace export <traceId>` | `--format json\|ndjson` | 기계-읽기용 덤프 (공유·AI 도구 입력) |
+| 서브명령                       | 인자 / 옵션                            | 동작                                                                |
+| ------------------------------ | -------------------------------------- | ------------------------------------------------------------------- |
+| `agent trace list`             | `-s --session`, `-n --limit` (기본 20) | 최근 트레이스 요약 (traceId, 세션, totalMs, egoAction, textPreview) |
+| `agent trace show <traceId>`   | `--format text\|json`                  | 블록별 타임라인 렌더 (offset, block, event, duration, payload 요약) |
+| `agent trace last`             | `-s --session`, `--format …`           | 가장 최근 traceId 찾아 `show` 위임                                  |
+| `agent trace export <traceId>` | `--format json\|ndjson`                | 기계-읽기용 덤프 (공유·AI 도구 입력)                                |
 
 ### 13.6. 환경변수 토글
 
-| 변수 | 기본값 | 의미 |
-|------|-------|------|
-| `AGENT_TRACE` | (unset, ON 취급) | `'0'` 이면 NoopTraceLogger 주입 — DB 쓰기 없음 |
-| `AGENT_TRACE_RETENTION_DAYS` | `14` | 기동 시 cutoff 이전 row 삭제 기준 |
-| `AGENT_STATE_DIR` | `~/.agent` | `traceDb` 파일 루트 override |
+| 변수                         | 기본값           | 의미                                           |
+| ---------------------------- | ---------------- | ---------------------------------------------- |
+| `AGENT_TRACE`                | (unset, ON 취급) | `'0'` 이면 NoopTraceLogger 주입 — DB 쓰기 없음 |
+| `AGENT_TRACE_RETENTION_DAYS` | `14`             | 기동 시 cutoff 이전 row 삭제 기준              |
+| `AGENT_STATE_DIR`            | `~/.agent`       | `traceDb` 파일 루트 override                   |
 
 ### 13.7. 설계 불변량 & 비목표
 
@@ -1227,14 +1274,14 @@ Webapp 은 TUI 와 동일한 `/rpc` 엔드포인트·동일 RPC 메서드 세트
 
 ### 14.1 서피스 대응 표 (TUI [T*] ↔ Webapp [B*])
 
-| TUI 블록 | Webapp 블록 | 파일 |
-|---------|------------|------|
-| [T1] InputBar | [B1] `<chat-input>` | packages/webapp/src/ui/chat/chat-input.ts |
-| [T2] App.send | [B2] ChatController.send | packages/webapp/src/ui/controllers/chat-controller.ts |
-| [T3] RpcClient | [B3] BrowserRpcClient | packages/webapp/src/ui/controllers/rpc-client.ts |
-| `<PhaseLine>` (Ink) | `<phase-line>` (Lit) | packages/webapp/src/ui/components/phase-line.ts |
-| (해당 없음) | [D1] DeviceIdentity | packages/webapp/src/ui/controllers/device-identity.ts |
-| (해당 없음) | [V*] view-overview/channels/instances/sessions/cron | packages/webapp/src/ui/views/ |
+| TUI 블록            | Webapp 블록                                         | 파일                                                  |
+| ------------------- | --------------------------------------------------- | ----------------------------------------------------- |
+| [T1] InputBar       | [B1] `<chat-input>`                                 | packages/webapp/src/ui/chat/chat-input.ts             |
+| [T2] App.send       | [B2] ChatController.send                            | packages/webapp/src/ui/controllers/chat-controller.ts |
+| [T3] RpcClient      | [B3] BrowserRpcClient                               | packages/webapp/src/ui/controllers/rpc-client.ts      |
+| `<PhaseLine>` (Ink) | `<phase-line>` (Lit)                                | packages/webapp/src/ui/components/phase-line.ts       |
+| (해당 없음)         | [D1] DeviceIdentity                                 | packages/webapp/src/ui/controllers/device-identity.ts |
+| (해당 없음)         | [V*] view-overview/channels/instances/sessions/cron | packages/webapp/src/ui/views/                         |
 
 ### 14.2 블록 상세
 
@@ -1300,12 +1347,12 @@ TUI 는 프로세스 환경변수/CLI 인자로 마스터 Bearer 를 확보하�
 
 ### 14.4 [G4] `/device/*` 라우트 — control-plane/gateway/server.ts
 
-| 경로 | 메서드 | 인증 | 처리 |
-|------|--------|------|------|
-| `/device/enroll` | POST | 마스터 Bearer 필요 | `DeviceAuthStore.enroll(publicKeyHex, name)` — 동일 pubkey 재등록은 deviceId 유지 (idempotent) |
-| `/device/challenge` | POST | 미인증 | `DeviceAuthStore.issueChallenge(deviceId?)` — 32B 랜덤, 2분 TTL, 선택적 deviceId 피닝 |
-| `/device/assert` | POST | 미인증 | `consumeChallenge` + `verifyEd25519` (node:crypto SPKI DER 래핑) → `issueSessionToken` — HMAC-SHA256 `v1.<deviceIdB64>.<expiryB64>.<rand>.<mac>` |
-| `/ui` `/ui/*` | GET | 미인증 | `webapp.dir` 에서 파일 직접 서빙. 없으면 `index.html` fallback (SPA). 확장자 allow-list(html/js/css/svg/png/woff2/...) |
+| 경로                | 메서드 | 인증               | 처리                                                                                                                                             |
+| ------------------- | ------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/device/enroll`    | POST   | 마스터 Bearer 필요 | `DeviceAuthStore.enroll(publicKeyHex, name)` — 동일 pubkey 재등록은 deviceId 유지 (idempotent)                                                   |
+| `/device/challenge` | POST   | 미인증             | `DeviceAuthStore.issueChallenge(deviceId?)` — 32B 랜덤, 2분 TTL, 선택적 deviceId 피닝                                                            |
+| `/device/assert`    | POST   | 미인증             | `consumeChallenge` + `verifyEd25519` (node:crypto SPKI DER 래핑) → `issueSessionToken` — HMAC-SHA256 `v1.<deviceIdB64>.<expiryB64>.<rand>.<mac>` |
+| `/ui` `/ui/*`       | GET    | 미인증             | `webapp.dir` 에서 파일 직접 서빙. 없으면 `index.html` fallback (SPA). 확장자 allow-list(html/js/css/svg/png/woff2/...)                           |
 
 ### 14.5 [G5] ApiGateway WS 업그레이드 — 인증 경로 2중 시도
 

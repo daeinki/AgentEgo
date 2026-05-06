@@ -16,6 +16,7 @@ pnpm --filter @agent-platform/cli dev -- send "안녕"
 ```
 
 출력:
+
 ```
 안녕하세요! 오늘 무엇을 도와드릴까요?
 
@@ -23,6 +24,7 @@ pnpm --filter @agent-platform/cli dev -- send "안녕"
 ```
 
 내부적으로 일어난 일:
+
 1. CLI 가 `StandardMessage` 생성 (`conversation.id='cli-default'`, `channel.type='webchat'`)
 2. `./agent-sessions.db` SQLite DB 자동 생성
 3. 세션 자동 해석 (기존 것 있으면 재사용, 없으면 생성)
@@ -48,11 +50,13 @@ CLI 는 기본 세션 id (`cli-default`) 를 재사용하므로 같은 대화가
 ## Step 3: 모델 바꾸기
 
 `.env` 편집:
+
 ```bash
 AGENT_MODEL=claude-haiku-4-5-20251001
 ```
 
 Haiku 는 더 빠르고 저렴합니다. 다시 실행:
+
 ```bash
 pnpm --filter @agent-platform/cli dev -- send "자, 간단히만 대답해: 타입스크립트는 뭐야?"
 ```
@@ -119,6 +123,7 @@ agent_response|반갑습니다 대인님! ...
 ## 튜토리얼 정리
 
 이 튜토리얼에서는:
+
 - ✅ `agent send` 로 메시지 송수신
 - ✅ 세션이 자동 생성·재사용됨
 - ✅ 세션 id 로 대화 격리
@@ -133,15 +138,19 @@ agent_response|반갑습니다 대인님! ...
 ## 문제 해결
 
 ### 매번 같은 인사만 반복됨
+
 세션 컨텍스트가 제대로 로드되지 않는 것. `./agent-sessions.db` 가 읽기 전용인지, 실행할 때마다
 삭제되는지 확인.
 
 ### `ANTHROPIC_API_KEY is not set`
+
 쉘이 `.env` 를 자동 로드하지 않을 수 있습니다. 인라인:
+
 ```bash
 ANTHROPIC_API_KEY=sk-ant-... pnpm --filter @agent-platform/cli dev -- send "hi"
 ```
 
 ### Claude 응답이 영어로 나옴
+
 현재 기본은 system prompt 최소 상태. `send.ts` 를 편집하거나, EGO + 페르소나를 도입하면 한국어
 선호를 주입할 수 있습니다 (튜토리얼 02 참조).

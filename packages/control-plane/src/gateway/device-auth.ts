@@ -159,10 +159,7 @@ export class DeviceAuthStore {
    * the deviceId (if pinned). Returns the record — caller must still verify
    * the ed25519 signature against device.publicKeyHex.
    */
-  consumeChallenge(
-    challenge: string,
-    deviceId: string,
-  ): { device: DeviceRecord } {
+  consumeChallenge(challenge: string, deviceId: string): { device: DeviceRecord } {
     const rec = this.challenges.get(challenge);
     if (!rec) throw new Error('unknown or expired challenge');
     this.challenges.delete(challenge);
@@ -207,13 +204,7 @@ export class DeviceAuthStore {
     if (parts.length !== 5 || parts[0] !== 'v1') {
       return { ok: false, reason: 'malformed' };
     }
-    const [, deviceB64, expiryB64, , macHex] = parts as [
-      string,
-      string,
-      string,
-      string,
-      string,
-    ];
+    const [, deviceB64, expiryB64, , macHex] = parts as [string, string, string, string, string];
     const body = parts.slice(0, 4).join('.');
     const expected = this.sign(body);
     const a = Buffer.from(macHex, 'hex');

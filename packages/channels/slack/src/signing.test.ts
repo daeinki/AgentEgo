@@ -24,7 +24,12 @@ describe('verifySlackSignature', () => {
     const ts = String(Math.floor(Date.now() / 1000));
     const sig = sign('original', ts, secret);
     expect(
-      verifySlackSignature({ signingSecret: secret, timestamp: ts, signature: sig, body: 'tampered' }),
+      verifySlackSignature({
+        signingSecret: secret,
+        timestamp: ts,
+        signature: sig,
+        body: 'tampered',
+      }),
     ).toBe(false);
   });
 
@@ -33,7 +38,13 @@ describe('verifySlackSignature', () => {
     const ts = String(Math.floor(nowMs / 1000) - 10 * 60); // 10 min ago
     const sig = sign('body', ts, secret);
     expect(
-      verifySlackSignature({ signingSecret: secret, timestamp: ts, signature: sig, body: 'body', nowMs }),
+      verifySlackSignature({
+        signingSecret: secret,
+        timestamp: ts,
+        signature: sig,
+        body: 'body',
+        nowMs,
+      }),
     ).toBe(false);
   });
 

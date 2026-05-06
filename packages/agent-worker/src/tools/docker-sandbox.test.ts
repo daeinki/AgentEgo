@@ -2,7 +2,12 @@ import { describe, it, expect, vi } from 'vitest';
 import { DockerSandbox } from './docker-sandbox.js';
 import { bashTool } from './bash-tool.js';
 import { fsReadTool } from './built-in.js';
-import { buildDockerArgs, type ContainerResult, type ContainerRuntime, type RunOptions } from './container-runtime.js';
+import {
+  buildDockerArgs,
+  type ContainerResult,
+  type ContainerRuntime,
+  type RunOptions,
+} from './container-runtime.js';
 import { ownerPolicy } from '../security/capability-guard.js';
 import { tmpdir } from 'node:os';
 

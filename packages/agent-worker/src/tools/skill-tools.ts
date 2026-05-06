@@ -1,8 +1,5 @@
 import type { Permission, ToolResult } from '@agent-platform/core';
-import type {
-  LocalSkillRegistry,
-  SkillDefinition,
-} from '@agent-platform/skills';
+import type { LocalSkillRegistry, SkillDefinition } from '@agent-platform/skills';
 import type { AgentTool } from './types.js';
 
 /**
@@ -198,7 +195,8 @@ export function skillCreateTool(deps: SkillToolDeps): AgentTool<SkillCreateArgs>
 export function skillListTool(deps: SkillToolDeps): AgentTool<SkillListArgs> {
   return {
     name: 'skill.list',
-    description: 'List installed skills, optionally filtered by a substring query against id/name/description.',
+    description:
+      'List installed skills, optionally filtered by a substring query against id/name/description.',
     riskLevel: 'low',
     permissions: [],
     inputSchema: {
@@ -251,7 +249,8 @@ export function skillListTool(deps: SkillToolDeps): AgentTool<SkillListArgs> {
 export function skillRemoveTool(deps: SkillToolDeps): AgentTool<SkillRemoveArgs> {
   return {
     name: 'skill.remove',
-    description: 'Uninstall a skill by id. The tool backed by the skill disappears on the next turn.',
+    description:
+      'Uninstall a skill by id. The tool backed by the skill disappears on the next turn.',
     riskLevel: 'medium',
     permissions: [{ type: 'filesystem', access: 'write', paths: ['~/.agent/skills'] }],
     inputSchema: {
@@ -335,10 +334,5 @@ export function skillReloadTool(deps: SkillToolDeps): AgentTool<SkillReloadArgs>
  * Convenience bundle: return all four skill-authoring tools.
  */
 export function skillAuthoringTools(deps: SkillToolDeps): AgentTool[] {
-  return [
-    skillCreateTool(deps),
-    skillListTool(deps),
-    skillRemoveTool(deps),
-    skillReloadTool(deps),
-  ];
+  return [skillCreateTool(deps), skillListTool(deps), skillRemoveTool(deps), skillReloadTool(deps)];
 }

@@ -131,12 +131,7 @@ export class SessionStore {
     const stmt = this.db.prepare(
       'UPDATE sessions SET status = ?, updated_at = ?, metadata = ? WHERE id = ?',
     );
-    stmt.run(
-      nextStatus,
-      now,
-      nextMetadata ? JSON.stringify(nextMetadata) : null,
-      sessionId,
-    );
+    stmt.run(nextStatus, now, nextMetadata ? JSON.stringify(nextMetadata) : null, sessionId);
 
     const result: Session = {
       ...existing,

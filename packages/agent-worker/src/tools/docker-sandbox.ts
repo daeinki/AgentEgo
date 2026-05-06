@@ -158,7 +158,7 @@ export class DockerSandbox implements ToolSandbox {
   ): Promise<ToolResult> {
     const spec = tool.dockerCommand(args);
     const limits: ResourceLimits = {
-      cpus: spec.cpus ?? policy.resourceLimits.maxCpuSeconds > 0 ? 0.5 : undefined,
+      cpus: (spec.cpus ?? policy.resourceLimits.maxCpuSeconds > 0) ? 0.5 : undefined,
       memoryMb: spec.memoryMb ?? policy.resourceLimits.maxMemoryMb,
       networkEnabled: spec.networkEnabled ?? policy.resourceLimits.networkEnabled,
       readOnly: spec.readOnly ?? true,
@@ -195,7 +195,10 @@ export class DockerSandbox implements ToolSandbox {
  * Opt-in contract that lets a tool advertise how it wants to be run inside a
  * container.
  */
-export interface DockerTool extends Pick<AgentTool, 'name' | 'description' | 'permissions' | 'riskLevel' | 'inputSchema'> {
+export interface DockerTool extends Pick<
+  AgentTool,
+  'name' | 'description' | 'permissions' | 'riskLevel' | 'inputSchema'
+> {
   readonly runsInContainer: true;
   dockerCommand(args: unknown): DockerCommandSpec;
   /**

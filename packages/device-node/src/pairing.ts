@@ -40,9 +40,7 @@ export function createTokenMint(secret: string): TokenMint {
       const issuedAt = Number(token.slice(0, dot));
       const macPart = token.slice(dot + 1);
       if (!Number.isFinite(issuedAt)) return false;
-      const expected = createHmac('sha256', secret)
-        .update(`${deviceId}:${issuedAt}`)
-        .digest('hex');
+      const expected = createHmac('sha256', secret).update(`${deviceId}:${issuedAt}`).digest('hex');
       return expected === macPart;
     },
   };

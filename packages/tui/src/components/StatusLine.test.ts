@@ -7,9 +7,9 @@ describe('formatPhase (ADR-010 §3.1.4.6)', () => {
   });
 
   it('shows tool name when phase is tool_call', () => {
-    expect(
-      formatPhase({ phase: 'tool_call', elapsedMs: 3200, toolName: 'bash_run' }),
-    ).toBe('[🔧 bash_run] 3.2s');
+    expect(formatPhase({ phase: 'tool_call', elapsedMs: 3200, toolName: 'bash_run' })).toBe(
+      '[🔧 bash_run] 3.2s',
+    );
   });
 
   it('shows step progress when phase is executing_step', () => {
@@ -31,9 +31,9 @@ describe('formatPhase (ADR-010 §3.1.4.6)', () => {
   });
 
   it('shows attempt number for replan phase', () => {
-    expect(
-      formatPhase({ phase: 'replan', elapsedMs: 8400, attemptNumber: 2 }),
-    ).toBe('[↻ replan #2] 8.4s');
+    expect(formatPhase({ phase: 'replan', elapsedMs: 8400, attemptNumber: 2 })).toBe(
+      '[↻ replan #2] 8.4s',
+    );
   });
 
   it('falls back to phase label when no structured detail is provided', () => {

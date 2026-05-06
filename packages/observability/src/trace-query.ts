@@ -131,9 +131,7 @@ export class TraceQuery {
 
   private tableHasColumn(table: string, column: string): boolean {
     try {
-      const cols = this.db
-        .prepare(`PRAGMA table_info(${table})`)
-        .all() as Array<{ name: string }>;
+      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
       return cols.some((c) => c.name === column);
     } catch {
       return false;

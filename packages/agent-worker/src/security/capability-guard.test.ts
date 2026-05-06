@@ -20,10 +20,7 @@ function makeTool(
   };
 }
 
-function withPolicy(
-  sessionId: string,
-  overrides: Partial<SessionPolicy> = {},
-): SessionPolicy {
+function withPolicy(sessionId: string, overrides: Partial<SessionPolicy> = {}): SessionPolicy {
   return {
     ...ownerPolicy(sessionId),
     ...overrides,

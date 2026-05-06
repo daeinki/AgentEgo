@@ -5,7 +5,10 @@ import type { WorkflowStep, Workflow } from './schema.js';
  * doesn't depend on agent-worker.
  */
 export interface WorkflowToolAdapter {
-  execute(name: string, args: unknown): Promise<{ success: boolean; output?: string; error?: string }>;
+  execute(
+    name: string,
+    args: unknown,
+  ): Promise<{ success: boolean; output?: string; error?: string }>;
 }
 
 export interface ExecuteOptions {
@@ -53,7 +56,10 @@ const DEFAULT_MAX_CALL_DEPTH = 32;
  * other composite kinds (sequence/parallel/branch/try) inherit the parent
  * frame so existing flat-bag workflows keep working unchanged.
  */
-export async function executeWorkflow(wf: Workflow, options: ExecuteOptions): Promise<ExecuteResult> {
+export async function executeWorkflow(
+  wf: Workflow,
+  options: ExecuteOptions,
+): Promise<ExecuteResult> {
   const root: Record<string, unknown> = { ...(options.initialVars ?? {}) };
   const state: ExecState = {
     workflow: wf,

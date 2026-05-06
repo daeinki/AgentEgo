@@ -24,7 +24,13 @@ interface HealthInfo {
   ports: { gateway: number };
 }
 
-export function App({ host, port, authToken, conversationId, sessionId: initialSessionId }: AppProps): React.JSX.Element {
+export function App({
+  host,
+  port,
+  authToken,
+  conversationId,
+  sessionId: initialSessionId,
+}: AppProps): React.JSX.Element {
   const { exit } = useApp();
   const url = useMemo(() => `ws://${host}:${port}/rpc`, [host, port]);
   const { client, status, error } = useRpc({ url, authToken });
@@ -74,7 +80,11 @@ export function App({ host, port, authToken, conversationId, sessionId: initialS
           setTurns(
             res.events.map((ev) => ({
               id: `hist-${ev.id}`,
-              role: (ev.role === 'assistant' ? 'assistant' : ev.role === 'system' ? 'system' : 'user') as ChatTurn['role'],
+              role: (ev.role === 'assistant'
+                ? 'assistant'
+                : ev.role === 'system'
+                  ? 'system'
+                  : 'user') as ChatTurn['role'],
               text: ev.content,
             })),
           );
@@ -158,7 +168,8 @@ export function App({ host, port, authToken, conversationId, sessionId: initialS
                 if (p.detail?.toolName) next.toolName = p.detail.toolName;
                 if (p.detail?.stepIndex !== undefined) next.stepIndex = p.detail.stepIndex;
                 if (p.detail?.totalSteps !== undefined) next.totalSteps = p.detail.totalSteps;
-                if (p.detail?.attemptNumber !== undefined) next.attemptNumber = p.detail.attemptNumber;
+                if (p.detail?.attemptNumber !== undefined)
+                  next.attemptNumber = p.detail.attemptNumber;
                 setPhase(next);
               }
             }

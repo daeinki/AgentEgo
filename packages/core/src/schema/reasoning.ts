@@ -2,10 +2,7 @@ import { Type, type Static } from '@sinclair/typebox';
 
 // ─── Enums (ADR-009 / agent-orchestration.md §3.3.1.5) ─────────────────────
 
-export const ReasoningMode = Type.Union([
-  Type.Literal('react'),
-  Type.Literal('plan_execute'),
-]);
+export const ReasoningMode = Type.Union([Type.Literal('react'), Type.Literal('plan_execute')]);
 export type ReasoningMode = Static<typeof ReasoningMode>;
 
 export const ReasoningStepKind = Type.Union([

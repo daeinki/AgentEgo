@@ -117,9 +117,7 @@ export class LocalSkillRegistry implements SkillRegistry {
     if (!options.skipVerification) {
       const verification = await this.verifyAt(match.sourceDir);
       if (!verification.hashMatches || !verification.signatureValid) {
-        throw new Error(
-          `verification failed for ${skillId}: ${verification.message ?? 'unknown'}`,
-        );
+        throw new Error(`verification failed for ${skillId}: ${verification.message ?? 'unknown'}`);
       }
     }
 
@@ -155,9 +153,7 @@ export class LocalSkillRegistry implements SkillRegistry {
     options: InstallOptions = {},
   ): Promise<InstallResult> {
     if (!/^[a-z][a-z0-9-]{2,40}$/.test(def.id)) {
-      throw new Error(
-        `invalid skill id: ${def.id} (must match /^[a-z][a-z0-9-]{2,40}$/)`,
-      );
+      throw new Error(`invalid skill id: ${def.id} (must match /^[a-z][a-z0-9-]{2,40}$/)`);
     }
 
     const dest = resolve(this.installRoot, def.id);
@@ -311,8 +307,7 @@ export class LocalSkillRegistry implements SkillRegistry {
           .digest('hex');
         const a = Buffer.from(manifest.signature, 'utf-8');
         const b = Buffer.from(expected, 'utf-8');
-        signatureValid =
-          a.length === b.length && timingSafeEqual(a, b);
+        signatureValid = a.length === b.length && timingSafeEqual(a, b);
       }
     }
 
@@ -321,7 +316,9 @@ export class LocalSkillRegistry implements SkillRegistry {
       signatureValid,
       hashMatches,
       ...(!hashMatches
-        ? { message: `content hash mismatch: expected ${manifest.contentSha256}, got ${actualHash}` }
+        ? {
+            message: `content hash mismatch: expected ${manifest.contentSha256}, got ${actualHash}`,
+          }
         : !signatureValid
           ? { message: 'signature missing or invalid' }
           : {}),
@@ -364,9 +361,7 @@ export async function buildManifest(
   const manifest: SkillManifest = { ...base, contentSha256 };
   if (signingSecret) {
     const { createHmac } = await import('node:crypto');
-    manifest.signature = createHmac('sha256', signingSecret)
-      .update(contentSha256)
-      .digest('hex');
+    manifest.signature = createHmac('sha256', signingSecret).update(contentSha256).digest('hex');
   }
   return manifest;
 }

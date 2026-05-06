@@ -30,10 +30,7 @@ import { deviceListCommand, deviceRevokeCommand } from './commands/device.js';
 
 const program = new Command();
 
-program
-  .name('agent')
-  .description('AI Agent Platform CLI')
-  .version('0.1.0');
+program.name('agent').description('AI Agent Platform CLI').version('0.1.0');
 
 program
   .command('send')
@@ -41,13 +38,19 @@ program
   .argument('<message>', 'Message text to send')
   .option('-s, --session <id>', 'Session ID (auto-created if omitted)')
   .option('-a, --agent <id>', 'Agent ID', 'default')
-  .option('--db <path>', 'Session database path (default: ~/.agent/state/sessions.db, or ./agent-sessions.db if it exists)')
+  .option(
+    '--db <path>',
+    'Session database path (default: ~/.agent/state/sessions.db, or ./agent-sessions.db if it exists)',
+  )
   .action(sendCommand);
 
 program
   .command('status')
   .description('Show platform status')
-  .option('--db <path>', 'Session database path (default: ~/.agent/state/sessions.db, or ./agent-sessions.db if it exists)')
+  .option(
+    '--db <path>',
+    'Session database path (default: ~/.agent/state/sessions.db, or ./agent-sessions.db if it exists)',
+  )
   .action(statusCommand);
 
 program
@@ -111,7 +114,11 @@ gateway
   .command('install')
   .description('Register the gateway with the OS service manager (launchd/systemd/schtasks)')
   .option('--label <name>', 'Service label (platform default if omitted)')
-  .option('-p, --port <n>', 'Port for the supervised gateway', String(process.env['AGENT_GATEWAY_PORT'] ?? 18790))
+  .option(
+    '-p, --port <n>',
+    'Port for the supervised gateway',
+    String(process.env['AGENT_GATEWAY_PORT'] ?? 18790),
+  )
   .option('--auth-token <token>', 'Bearer token the service should use')
   .option('--start', 'Start the service immediately after installing')
   .action(gatewayInstallCommand);

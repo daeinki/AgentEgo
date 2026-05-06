@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { AddressInfo } from 'node:net';
 import { WebSocketServer, type WebSocket as ServerWs } from 'ws';
-import { DiscordGatewayClient, DiscordShardManager, type GatewayLifecycleEvent } from './gateway-client.js';
+import {
+  DiscordGatewayClient,
+  DiscordShardManager,
+  type GatewayLifecycleEvent,
+} from './gateway-client.js';
 import { GatewayOp, Intent, combineIntents } from './gateway-opcodes.js';
 
 interface FakeGateway {

@@ -194,9 +194,9 @@ describe('PalaceMemorySystem', () => {
       const { DatabaseSync } = await import('node:sqlite');
       const db = new DatabaseSync(resolve(dir, 'palace.db'), { readOnly: true });
       try {
-        const logRows = db
-          .prepare('SELECT id FROM memory_access_log')
-          .all() as Array<{ id: number }>;
+        const logRows = db.prepare('SELECT id FROM memory_access_log').all() as Array<{
+          id: number;
+        }>;
         expect(logRows.length).toBe(0);
       } finally {
         db.close();
