@@ -57,6 +57,13 @@ interface BinaryRunArgs {
   image?: string;
   timeoutMs?: number;
   env?: Record<string, string>;
+  /**
+   * Opt-in network access. Default `false` — even owner-trusted sessions
+   * cannot exfiltrate via network from a binary.run container unless the
+   * caller explicitly asks for it. Without this override the container is
+   * spawned with `--network none`.
+   */
+  network?: boolean;
 }
 
 /**
@@ -119,6 +126,11 @@ export function binaryRunTool(deps: BinaryRunToolDeps): DockerTool {
           additionalProperties: { type: 'string' },
           description: 'Env vars set inside the container.',
         },
+        network: {
+          type: 'boolean',
+          description:
+            'Allow network access. Default false — container is spawned with --network none. Set true only when the binary genuinely needs outbound HTTP/DNS.',
+        },
       },
     },
     dockerCommand(rawArgs: unknown): DockerCommandSpec {
@@ -146,6 +158,12 @@ export function binaryRunTool(deps: BinaryRunToolDeps): DockerTool {
         command,
         cwd: args.cwd ?? '/tmp',
         mounts: [{ source: skillRoot, target: mountPoint, readonly: true }],
+        // Default-deny network even for owner-trusted sessions. The whole
+        // point of containerizing agent-written code is to bound blast
+        // radius below "what owner could do" — exfiltration via outbound
+        // TCP is exactly the kind of thing this layer should block by
+        // default. Caller opts in via `args.network: true`.
+        networkEnabled: args.network === true,
       };
       if (args.env !== undefined) spec.env = args.env;
       return spec;

@@ -233,6 +233,44 @@ describe('binary.run — DockerSandbox integration', () => {
   it('exposes interpreter whitelist as a constant for callers / docs', () => {
     expect([...INTERPRETER_WHITELIST]).toEqual(['python3', 'node', 'bash', 'sh']);
   });
+
+  it('disables container network by default — even owner-trusted sessions cannot exfiltrate', async () => {
+    const tool = binaryRunTool({ skillInstallRoot: skillRoot });
+    const runtime = new MockContainerRuntime(ok);
+    const sandbox = new DockerSandbox(new Map([[tool.name, tool]]), {
+      defaultImage: 'alpine',
+      runtime,
+    });
+    const inst = await sandbox.acquire(ownerPolicy('s'));
+    await sandbox.execute(
+      inst,
+      'binary.run',
+      { path: 'csv-parser/runner.py', interpreter: 'python3' },
+      5000,
+    );
+    await sandbox.release(inst);
+
+    expect(runtime.calls[0]!.limits!.networkEnabled).toBe(false);
+  });
+
+  it('opts into container network only when args.network is explicitly true', async () => {
+    const tool = binaryRunTool({ skillInstallRoot: skillRoot });
+    const runtime = new MockContainerRuntime(ok);
+    const sandbox = new DockerSandbox(new Map([[tool.name, tool]]), {
+      defaultImage: 'alpine',
+      runtime,
+    });
+    const inst = await sandbox.acquire(ownerPolicy('s'));
+    await sandbox.execute(
+      inst,
+      'binary.run',
+      { path: 'csv-parser/runner.py', interpreter: 'python3', network: true },
+      5000,
+    );
+    await sandbox.release(inst);
+
+    expect(runtime.calls[0]!.limits!.networkEnabled).toBe(true);
+  });
 });
 
 // ─── buildDockerArgs verifies the --mount flag emission ───────────────────
