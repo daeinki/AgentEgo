@@ -1,6 +1,6 @@
 # TODO — 구현 현황 + 미구현 항목
 
-> 스냅샷 기준일: 2026-04-29
+> 스냅샷 기준일: 2026-05-06
 > 범례: ✅ 구현됨 / ⚠️ 부분·스텁 / ❌ 미구현
 
 ---
@@ -10,14 +10,16 @@
 블로킹 의사결정 없이 단독 코드 변경으로 끝낼 수 있는 항목들.
 
 ### 보안 · 샌드박스
+
 - [ ] **Skill 실행 sandbox 격리** — 현재 host process 에서 실행. 옵션: (a) DockerSandbox 재사용, (b) Node `vm` 모듈 격리, (c) child_process. (a) 가 보안 강도 가장 높음
 - [ ] **DockerSandbox gVisor 런타임 실 검증** — 코드 옵션은 있으나 실 환경에서 `runsc` 동작·성능 미측정
 - [ ] **보안 감사** — 프롬프트 인젝션 / 토큰 탈취 / 샌드박스 탈출 시나리오 코드 리뷰 + 테스트 케이스 추가
 
 ### 스펙·문서
-- [ ] **사용자 가이드** — CLI 사용법 / 설정 파일 스키마 / 튜토리얼
-- [ ] **아키텍처 다이어그램 (실 구현 기준)** — 현 설계문서는 스펙 기준이라 실제와 약간 어긋남
-- [ ] **API 레퍼런스** — 공개 `contracts.*` 인터페이스별 문서
+
+- [x] **사용자 가이드** — `docs/reference/cli.md` 갱신: `agent device`, `agent trace` 서브 추가, env 변수 표 보완
+- [x] **아키텍처 다이어그램 (실 구현 기준)** — `docs/architecture.md` §2 패키지 지도에 reasoning/scheduler 추가, contracts 표 16개로, §4.5 Reasoning 레이어 신설, channel adapter 트리오 정확히 반영
+- [x] **API 레퍼런스** — `docs/reference/contracts.md` 신규 작성 (16개 인터페이스 + 확장 가이드)
 
 ---
 
@@ -197,26 +199,26 @@
 
 ## 패키지 ↔ 블록 매핑 (요약)
 
-| 블록 | 패키지 | 구현 |
-|---|---|---|
-| T1-T3 | `packages/tui` | ✅ |
-| G1 / C1-C2 / DeviceAuth | `packages/control-plane` | ✅ |
-| G2-G3 + RPC 메서드 | `packages/gateway-cli` | ✅ |
-| P1 | `packages/cli/src/runtime/platform.ts` | ✅ |
-| E1 전체 | `packages/ego` | ✅ |
-| W1-W2 / M* | `packages/agent-worker/{runner,prompt,model}` | ✅ |
-| R1-R3 | `packages/agent-worker/src/reasoning` | ✅ (트리거 #2 보류) |
-| K* | `packages/skills` + `packages/agent-worker/src/tools` | ✅ (Skill sandbox 격리 ❌) |
-| S* | `packages/agent-worker/src/security + tools/*sandbox.ts` | ✅ / ⚠️ (gVisor 미검증) |
-| X* Memory | `packages/memory` | ✅ (vec-ext 교체 옵션 ⚠️) |
-| X* Observability | `packages/observability` | ✅ |
-| Message Bus | `packages/message-bus` | ✅ (worker-pool 배포 ❌) |
-| Webapp | `packages/webapp` | ✅ (브라우저 실검증 ⚠️) |
-| 채널 5개 | `packages/channels/*` | ✅ (WhatsApp baileys QR 실 페어링 ⚠️) |
-| ChannelRegistry | `packages/control-plane/src/gateway/platform-channel-registry.ts` | ✅ |
-| Scheduler / CronRegistry | `packages/scheduler` | ✅ |
-| Workflow | `packages/workflow` | ✅ |
-| Device-node | `packages/device-node` | ✅ |
+| 블록                     | 패키지                                                            | 구현                                  |
+| ------------------------ | ----------------------------------------------------------------- | ------------------------------------- |
+| T1-T3                    | `packages/tui`                                                    | ✅                                    |
+| G1 / C1-C2 / DeviceAuth  | `packages/control-plane`                                          | ✅                                    |
+| G2-G3 + RPC 메서드       | `packages/gateway-cli`                                            | ✅                                    |
+| P1                       | `packages/cli/src/runtime/platform.ts`                            | ✅                                    |
+| E1 전체                  | `packages/ego`                                                    | ✅                                    |
+| W1-W2 / M\*              | `packages/agent-worker/{runner,prompt,model}`                     | ✅                                    |
+| R1-R3                    | `packages/agent-worker/src/reasoning`                             | ✅ (트리거 #2 보류)                   |
+| K\*                      | `packages/skills` + `packages/agent-worker/src/tools`             | ✅ (Skill sandbox 격리 ❌)            |
+| S\*                      | `packages/agent-worker/src/security + tools/*sandbox.ts`          | ✅ / ⚠️ (gVisor 미검증)               |
+| X\* Memory               | `packages/memory`                                                 | ✅ (vec-ext 교체 옵션 ⚠️)             |
+| X\* Observability        | `packages/observability`                                          | ✅                                    |
+| Message Bus              | `packages/message-bus`                                            | ✅ (worker-pool 배포 ❌)              |
+| Webapp                   | `packages/webapp`                                                 | ✅ (브라우저 실검증 ⚠️)               |
+| 채널 5개                 | `packages/channels/*`                                             | ✅ (WhatsApp baileys QR 실 페어링 ⚠️) |
+| ChannelRegistry          | `packages/control-plane/src/gateway/platform-channel-registry.ts` | ✅                                    |
+| Scheduler / CronRegistry | `packages/scheduler`                                              | ✅                                    |
+| Workflow                 | `packages/workflow`                                               | ✅                                    |
+| Device-node              | `packages/device-node`                                            | ✅                                    |
 
 ---
 
@@ -224,20 +226,20 @@
 
 git log 보조용 — 상세 내역은 커밋 메시지 참조.
 
-| 커밋 | 항목 |
-|---|---|
-| `54f6fb5` | channel-whatsapp: Meta Cloud API 클라이언트 (graph.facebook.com outbound + 자체 webhook 서버, X-Hub-Signature-256 HMAC 검증) |
+| 커밋      | 항목                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `54f6fb5` | channel-whatsapp: Meta Cloud API 클라이언트 (graph.facebook.com outbound + 자체 webhook 서버, X-Hub-Signature-256 HMAC 검증)   |
 | `bce6bd4` | channel-slack: Socket Mode 트랜스포트 (apps.connections.open + envelope ack + 자동 재접속, transport 디스크리미네이티드 union) |
-| `a02be22` | channel-discord: Gateway Resume(op6) + sharding (READY session_id 캐시, close 코드 분기, DiscordShardManager) |
-| `51bf250` | workflow: functions / try-catch-finally / scope (call·return·try·scope step kinds, scope frame stack, depth limit) |
-| `f8a7b5c` | agent-worker: planner JSON mode (OpenAI native + Anthropic `{` prefill, 3 planner sites) |
-| `0c99c2d` | docs: memory access logging + replan semantic matching 완료 표시 |
-| `672fd31` | agent-worker+cli: replan 단계 보존 의미 매칭 (StepMatcher + EmbedderStepMatcher, threshold 0.85) |
-| `d2d8d89` | memory: PalaceMemorySystem.search() access logging (`AGENT_MEMORY_ACCESS_LOG` 토글) |
-| `765ea5c` | skills: architecture-lookup 번들 v0.7.0 갱신 |
-| `d05a7c0` | scheduler+cli: CronRegistry — chat/bash/workflow runner, tasks.json JSON5 |
-| `a93b65a` | control-plane+cli: PlatformChannelRegistry → channels.list/status RPC 백엔드 |
-| `c88aba0` | agent-worker+core: replan 트리거 #3 (egoRelevance + goalUpdates) |
-| `6e728ac` | cli: `agent device {list,revoke}` |
-| `e656b2f` | webapp: chat delta 렌더 (`.innerHTML` → Lit `unsafeHTML`) |
-| `009e54a` | gateway: webapp `/ui/*` 자동 배선 (`--webapp-dir` → env → dist) |
+| `a02be22` | channel-discord: Gateway Resume(op6) + sharding (READY session_id 캐시, close 코드 분기, DiscordShardManager)                  |
+| `51bf250` | workflow: functions / try-catch-finally / scope (call·return·try·scope step kinds, scope frame stack, depth limit)             |
+| `f8a7b5c` | agent-worker: planner JSON mode (OpenAI native + Anthropic `{` prefill, 3 planner sites)                                       |
+| `0c99c2d` | docs: memory access logging + replan semantic matching 완료 표시                                                               |
+| `672fd31` | agent-worker+cli: replan 단계 보존 의미 매칭 (StepMatcher + EmbedderStepMatcher, threshold 0.85)                               |
+| `d2d8d89` | memory: PalaceMemorySystem.search() access logging (`AGENT_MEMORY_ACCESS_LOG` 토글)                                            |
+| `765ea5c` | skills: architecture-lookup 번들 v0.7.0 갱신                                                                                   |
+| `d05a7c0` | scheduler+cli: CronRegistry — chat/bash/workflow runner, tasks.json JSON5                                                      |
+| `a93b65a` | control-plane+cli: PlatformChannelRegistry → channels.list/status RPC 백엔드                                                   |
+| `c88aba0` | agent-worker+core: replan 트리거 #3 (egoRelevance + goalUpdates)                                                               |
+| `6e728ac` | cli: `agent device {list,revoke}`                                                                                              |
+| `e656b2f` | webapp: chat delta 렌더 (`.innerHTML` → Lit `unsafeHTML`)                                                                      |
+| `009e54a` | gateway: webapp `/ui/*` 자동 배선 (`--webapp-dir` → env → dist)                                                                |

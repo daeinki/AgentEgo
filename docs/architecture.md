@@ -39,11 +39,13 @@
 ```
 
 **EGO 토글**:
+
 - `state = 'off'` — Channel → Bus → Control Plane (EGO 건너뜀)
 - `state = 'passive'` — EGO 가 판단만 수행, 통과 그대로
 - `state = 'active'` — EGO 가 판단 + 개입 (enrich/redirect/direct_response)
 
 **운영자 서피스 (ADR-008/010)**:
+
 - TUI (`packages/tui`) 와 Webapp (`packages/webapp`) 은 모두 `/rpc` JSON-RPC 2.0 엔드포인트에서 동일한 메서드를 소비 — `chat.*`, `sessions.*`, `overview.status`, `channels.list`, `instances.list`, `cron.list`.
 - 인증 차등: TUI 는 `Authorization: Bearer <master>`, Webapp 은 `Sec-WebSocket-Protocol: bearer.<sessionToken>` 서브프로토콜 + ed25519 device-identity enrollment.
 - 공유 Phase 스트림: `chat.phase` JSON-RPC notification 을 둘 다 구독, `packages/core/src/schema/phase-format.ts` 의 `formatPhase` 로 동일 문자열 렌더(`[🔧 bash_run] 3.2s` 등).
@@ -56,7 +58,7 @@ packages/
 │   ├── src/schema/*      TypeBox 런타임 스키마 (Message, Session, EGO,
 │   │                     Goal, Persona, Memory, Observability, Capability,
 │   │                     Routing, Prompt, Model, Tool, Sandbox, Skill)
-│   ├── src/contracts/*   타입 전용 인터페이스 (14개)
+│   ├── src/contracts/*   타입 전용 인터페이스 (16개 — Reasoner/TraceLogger 포함)
 │   ├── src/ids.ts        브랜드 타입 ID 생성기 (uuid v7 기반)
 │   ├── src/adr/state.ts  ADR-006 EgoState 전이 헬퍼
 │   └── src/errors.ts     공유 에러 클래스
@@ -97,9 +99,16 @@ packages/
 │   └── llm-compactor.ts    LLM 기반 청크 요약
 │
 ├── agent-worker
-│   ├── runner/agent-runner.ts  AgentRunner (턴 실행 루프)
+│   ├── runner/agent-runner.ts  AgentRunner (턴 실행 루프, HybridReasoner 위임)
 │   ├── prompt/builder.ts       PromptBuilder (EGO enrichment 주입)
-│   ├── model/anthropic.ts      AnthropicAdapter (ModelAdapter 구현)
+│   ├── model/anthropic.ts      AnthropicAdapter (ModelAdapter 구현, SDK 0.88)
+│   ├── model/openai.ts         OpenAIAdapter (responseFormat=json_object)
+│   ├── reasoning/              ADR-009 Reasoning 레이어
+│   │   ├── hybrid-reasoner.ts        HybridReasoner (Reasoner 구현)
+│   │   ├── complexity-router.ts      EGO perception → ReAct vs Plan-Execute
+│   │   ├── react-executor.ts         Thought/Action/Observation 루프
+│   │   ├── plan-execute-executor.ts  planner JSON 모드 + replan 트리거
+│   │   └── step-matcher.ts           replan 단계 보존 (id + 의미 fallback)
 │   ├── tools/
 │   │   ├── built-in.ts         fsRead/fsWrite/webFetch
 │   │   ├── sandbox.ts          InProcessSandbox
@@ -109,10 +118,12 @@ packages/
 │       └── capability-guard.ts PolicyCapabilityGuard
 │
 ├── observability
-│   ├── setup.ts           setupTelemetry (console/memory/otlp/none)
-│   ├── tracer.ts          withSpan 헬퍼
-│   ├── metrics.ts         InMemoryMetricsSink
-│   └── otlp.ts            OTLP HTTP 프로세서 (dynamic import)
+│   ├── setup.ts             setupTelemetry (console/memory/otlp/none)
+│   ├── tracer.ts            withSpan 헬퍼
+│   ├── metrics.ts           InMemoryMetricsSink
+│   ├── otlp.ts              OTLP HTTP 프로세서 (dynamic import)
+│   ├── sqlite-trace-log.ts  SqliteTraceLog (TraceLogger 구현, blocks G*/E*/W*/R*/M*/S*/K*/X*)
+│   └── trace-query.ts       trace 조회 + 14일 보존 prune
 │
 ├── skills
 │   ├── manifest.ts        SkillManifest TypeBox 스키마
@@ -128,7 +139,12 @@ packages/
 │
 ├── workflow
 │   ├── schema.ts          Workflow DSL 타입 + validateWorkflow
-│   └── engine.ts          executeWorkflow 인터프리터
+│   └── engine.ts          executeWorkflow 인터프리터 (call/return/try/catch/scope)
+│
+├── scheduler              ◀─── ADR 부속 — cron + 3 runner
+│   ├── scheduler.ts       SchedulerService (node-cron 래퍼)
+│   ├── json-task-store.ts tasks.json (JSON5) 영속화
+│   └── runners/           chat-runner / bash-runner / workflow-runner
 │
 ├── device-node
 │   ├── protocol.ts        envelope 스키마 (hello/heartbeat/message/ack)
@@ -162,7 +178,7 @@ packages/
 │
 ├── cli
 │   ├── program.ts         Commander.js 커맨드 등록
-│   ├── commands/          send / status / ego / gateway / tui
+│   ├── commands/          send / status / ego / gateway / tui / device / trace
 │   └── runtime/
 │       └── platform.ts    startPlatform() — 모든 컴포넌트 와이어링
 │                          (ADR-010: devicesFile 기본 주입)
@@ -170,31 +186,37 @@ packages/
 └── channels/
     ├── webchat/           브라우저 WS 어댑터 (/webchat)
     ├── telegram/          Bot API 롱폴링 + mock client 테스트
-    ├── slack/             Events API webhook + Web API + 서명 검증
-    ├── discord/           REST 클라이언트 + Gateway WS (v10)
-    └── whatsapp/          WhatsAppClient 추상 + baileys (optional peer)
+    ├── slack/             transport union — Events API webhook | Socket Mode WS
+    │                       (apps.connections.open + envelope ack + 자동 재접속)
+    ├── discord/           REST + Gateway WS (v10) — Resume(op6) + sharding
+    │                       (DiscordShardManager, READY session_id 캐시)
+    └── whatsapp/          WhatsAppClient 추상
+                            ├─ Cloud API (graph.facebook.com + X-Hub-Signature-256 HMAC)
+                            └─ baileys QR (optional peer, ⚠️ 실 디바이스 미검증)
 ```
 
 ## 3. 컨트랙트 기반 확장성
 
 플랫폼 모든 경계는 `@agent-platform/core/contracts` 인터페이스로 추상화:
 
-| 인터페이스 | 기본 구현 | 교체 가능한 대안 |
-|-----------|-----------|-------------------|
-| `ChannelAdapter` | WebChat | Telegram/Slack/Discord/WhatsApp |
-| `SessionManager` | ControlPlaneSessionManager (SQLite) | — (미래: PostgreSQL) |
-| `Router` | RuleRouter | 커스텀 규칙 엔진 |
-| `EgoLayer` | EgoLayer | — |
-| `EgoLlmAdapter` | AnthropicEgoLlmAdapter | OpenAI/Gemini/ollama |
-| `MemorySystem` | PalaceMemorySystem | — (sqlite-vec 교체 가능) |
-| `PromptBuilder` | PromptBuilder | 커스텀 계층 전략 |
-| `ModelAdapter` | AnthropicAdapter | OpenAI/Gemini/ollama |
-| `CapabilityGuard` | PolicyCapabilityGuard | LDAP/OPA 통합 |
-| `ToolSandbox` | InProcessSandbox / DockerSandbox | gVisor/kata |
-| `SkillRegistry` | LocalSkillRegistry | 원격 레지스트리 |
-| `GoalStore` | FileGoalStore | — |
-| `PersonaManager` | FilePersonaManager | — |
-| `AuditLog` | SqliteAuditLog | Elasticsearch/Loki |
+| 인터페이스        | 기본 구현                             | 교체 가능한 대안                |
+| ----------------- | ------------------------------------- | ------------------------------- |
+| `ChannelAdapter`  | WebChat                               | Telegram/Slack/Discord/WhatsApp |
+| `SessionManager`  | ControlPlaneSessionManager (SQLite)   | — (미래: PostgreSQL)            |
+| `Router`          | RuleRouter                            | 커스텀 규칙 엔진                |
+| `EgoLayer`        | EgoLayer                              | —                               |
+| `EgoLlmAdapter`   | AnthropicEgoLlmAdapter                | OpenAI/Gemini/ollama            |
+| `MemorySystem`    | PalaceMemorySystem                    | — (sqlite-vec 교체 가능)        |
+| `PromptBuilder`   | PromptBuilder                         | 커스텀 계층 전략                |
+| `ModelAdapter`    | AnthropicAdapter                      | OpenAI/Gemini/ollama            |
+| `CapabilityGuard` | PolicyCapabilityGuard                 | LDAP/OPA 통합                   |
+| `ToolSandbox`     | InProcessSandbox / DockerSandbox      | gVisor/kata                     |
+| `SkillRegistry`   | LocalSkillRegistry                    | 원격 레지스트리                 |
+| `GoalStore`       | FileGoalStore                         | —                               |
+| `PersonaManager`  | FilePersonaManager                    | —                               |
+| `AuditLog`        | SqliteAuditLog                        | Elasticsearch/Loki              |
+| `Reasoner`        | HybridReasoner (ReAct + Plan-Execute) | 단일 모드 전용 reasoner         |
+| `TraceLogger`     | SqliteTraceLog                        | OTLP collector / Tempo          |
 
 ## 4. EGO 파이프라인 상세
 
@@ -228,6 +250,34 @@ StandardMessage
  audit.record     → 감사 로그 기록
 ```
 
+부속 안전장치:
+
+- **CircuitBreaker** (`circuit-breaker.ts`) — 연속 실패 N회 시 깊은 경로를 차단하고 일정 시간 동안 passthrough 로만 동작.
+- **Daily cost cap auto-downgrade** — `thresholds.maxCostUsdPerDay` 도달 시 `state` 를 자동 다운그레이드 (active → passive → off). 감사 로그에 `daily_cost_cap_hit` 태그로 기록.
+- **State 강등 흐름**: `off` 면 EGO 호출 자체가 생략 (Channel → Bus → Control Plane 직행), `passive` 는 판단만 수행 후 무조건 passthrough.
+
+## 4.5 Reasoning 레이어 (ADR-009)
+
+`AgentRunner` 는 `HybridReasoner` 에 위임하고, `ComplexityRouter` 가 EGO 의 `perception.estimatedComplexity` 를 직접 입력으로 받아 두 실행기를 분기:
+
+```
+EgoThinkingResult.perception.estimatedComplexity
+    ├─ low                     → ReactExecutor   (Thought/Action/Observation, 도구 2회 재시도)
+    └─ medium | high           → PlanExecuteExecutor
+                                  ├─ planner LLM JSON 모드 (provider 별 강제)
+                                  ├─ replan 트리거
+                                  │   ├─ #1  stepRetry 소진       ✅
+                                  │   ├─ #2  LLM judge            ❌ (비용 사유 보류)
+                                  │   └─ #3  egoRelevance>0.8 + goalUpdates ✅
+                                  ├─ 단계 보존: id 매칭 + StepMatcher 의미 fallback (threshold 0.85)
+                                  └─ 한도 초과 시 ReAct 다운그레이드
+
+requestType === 'workflow_execution' → 항상 plan-execute 강제
+EGO off                              → 휴리스틱 (sentence count + imperative verbs + tool 후보 수)
+```
+
+`EgoThinkingResult.cognition.recommendedSteps` 와 `goalUpdates` 가 채워져 있으면 planner 에 hint 로 주입된다.
+
 ## 5. 메모리 검색 전략
 
 하이브리드 검색 (`memory/src/search/hybrid.ts`):
@@ -258,7 +308,8 @@ user message 도착
     ├─ AgentRunner.processTurn(sessionId, effectiveMsg)
     │  ├─ 최근 50개 이벤트 로드
     │  ├─ PromptBuilder.build (EGO enrichment 포함)
-    │  ├─ ModelAdapter.stream → onChunk 콜백
+    │  ├─ HybridReasoner.run (도구 있을 때 — ReAct vs Plan-Execute 분기, §4.5)
+    │  │   └─ ModelAdapter.stream → onChunk 콜백
     │  ├─ SessionStore.addEvent (user_message)
     │  ├─ SessionStore.addEvent (agent_response)
     │  └─ memory.ingest (선택적, 비파괴)
@@ -267,6 +318,7 @@ user message 도착
 ```
 
 세션 상태 전이 (`Session.status`):
+
 - `active` — 기본
 - `hibernated` — 명시적 hibernate
 - `archived` — 오래된 세션 아카이브
@@ -274,25 +326,25 @@ user message 도착
 
 ## 7. 설정 source-of-truth
 
-| 설정 | 위치 | 형식 | 쓰는 주체 |
-|------|------|------|----------|
-| EGO | `~/.agent/ego/ego.json` | strict JSON | CLI / EGO |
-| Persona | `~/.agent/ego/persona.json` | strict JSON | PersonaManager |
-| Goals | `~/.agent/ego/goals.json` | strict JSON | FileGoalStore |
-| Audit | `~/.agent/ego/audit.db` | SQLite | SqliteAuditLog |
-| Sessions | `<stateDir>/state/sessions.db` | SQLite | SessionStore |
-| Memory | `~/.agent/memory/palace.db` + `wings/` | SQLite + Markdown | PalaceMemorySystem |
-| System prompt | `~/.agent/ego/system-prompt.md` | Markdown | EGO |
-| Devices | `<stateDir>/state/devices.json` | JSON (mode 0o600) | DeviceAuthStore (ADR-010) |
-| Trace | `<stateDir>/trace/traces.db` | SQLite | SqliteTraceLog |
+| 설정          | 위치                                   | 형식              | 쓰는 주체                 |
+| ------------- | -------------------------------------- | ----------------- | ------------------------- |
+| EGO           | `~/.agent/ego/ego.json`                | strict JSON       | CLI / EGO                 |
+| Persona       | `~/.agent/ego/persona.json`            | strict JSON       | PersonaManager            |
+| Goals         | `~/.agent/ego/goals.json`              | strict JSON       | FileGoalStore             |
+| Audit         | `~/.agent/ego/audit.db`                | SQLite            | SqliteAuditLog            |
+| Sessions      | `<stateDir>/state/sessions.db`         | SQLite            | SessionStore              |
+| Memory        | `~/.agent/memory/palace.db` + `wings/` | SQLite + Markdown | PalaceMemorySystem        |
+| System prompt | `~/.agent/ego/system-prompt.md`        | Markdown          | EGO                       |
+| Devices       | `<stateDir>/state/devices.json`        | JSON (mode 0o600) | DeviceAuthStore (ADR-010) |
+| Trace         | `<stateDir>/trace/traces.db`           | SQLite            | SqliteTraceLog            |
 
 경로 분리 원칙: `~/.agent/memory/` 는 메모리 시스템 전용, `~/.agent/ego/` 는 EGO 전용, `~/.agent/state/` 는 control-plane/device-auth 전용. 서로 직접 쓰지 않음.
 
 ## 8. 관측 가능성 3가지 기둥
 
-- **Traces** — `@opentelemetry/api` 기반, `withSpan()` 헬퍼로 S1~S7 각 단계 커버
+- **Traces** — `@opentelemetry/api` 기반, `withSpan()` 헬퍼로 S1~S7 각 단계 커버. 추가로 `SqliteTraceLog` (`<stateDir>/trace/traces.db`) 가 블록-prefix (T*/G*/C*/P*/E*/W*/R*/M*/S*/K*/X\*) 로 구조화 trace 를 저장. `AGENT_TRACE=0` 비활성, `AGENT_TRACE_RETENTION_DAYS` (기본 14) 로 prune.
 - **Metrics** — `InMemoryMetricsSink` (턴 수, 토큰, 비용, EGO fast-exit 비율, audit tag counts)
-- **Audit logs** — SQLite 기반 `ego_audit` 테이블, 20+ 태그 (ego_decision/ego_timeout/llm_schema_mismatch/daily_cost_cap_hit/...)
+- **Audit logs** — SQLite 기반 `ego_audit` 테이블, 20+ 태그 (ego_decision/ego_timeout/llm_schema_mismatch/daily_cost_cap_hit/circuit_breaker_open/...)
 
 ## 9. 관련 문서
 

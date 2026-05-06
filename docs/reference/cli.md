@@ -25,9 +25,9 @@ agent <command> [options]
 
 모든 명령어에서 사용 가능:
 
-| 옵션 | 의미 |
-|------|------|
-| `--help` | 명령어 도움말 |
+| 옵션        | 의미                       |
+| ----------- | -------------------------- |
+| `--help`    | 명령어 도움말              |
 | `--version` | `agent-platform` 버전 출력 |
 
 ## 명령어
@@ -46,9 +46,10 @@ agent <command> [options]
 |------|--------|------|
 | `-s, --session <id>` | 자동 생성 | 세션 ID (같은 ID 재사용 시 대화 이력 유지) |
 | `-a, --agent <id>` | `default` | 에이전트 ID |
-| `--db <path>` | `./agent-sessions.db` | 세션 DB 경로 |
+| `--db <path>` | `~/.agent/state/sessions.db` (또는 `./agent-sessions.db` 가 이미 있으면 그 경로) | 세션 DB 경로 |
 
 **예시**
+
 ```bash
 # 기본 전송
 agent send "안녕하세요"
@@ -62,6 +63,7 @@ agent send --db /tmp/test.db "임시 세션"
 ```
 
 **출력 형식**
+
 ```
 <스트리밍된 응답 텍스트>
 
@@ -69,6 +71,7 @@ agent send --db /tmp/test.db "임시 세션"
 ```
 
 **동작**
+
 1. `StandardMessage` 생성 (channel=webchat, sender.isOwner=true)
 2. `SessionStore.resolveSession()` 으로 세션 해석/생성
 3. `ego.json` 있으면 EGO 경유 (`state ∈ {passive, active}` 일 때)
@@ -83,14 +86,16 @@ agent send --db /tmp/test.db "임시 세션"
 **옵션**
 | 옵션 | 기본값 | 설명 |
 |------|--------|------|
-| `--db <path>` | `./agent-sessions.db` | 세션 DB 경로 |
+| `--db <path>` | `~/.agent/state/sessions.db` (또는 `./agent-sessions.db` 가 이미 있으면 그 경로) | 세션 DB 경로 |
 
 **예시**
+
 ```bash
 agent status
 ```
 
 **출력 예시**
+
 ```
 === Agent Platform Status ===
 
@@ -120,6 +125,7 @@ EGO 레이어 상태 관리.
 | `--config <path>` | `~/.agent/ego/ego.json` | EGO 설정 파일 경로 |
 
 **예시**
+
 ```bash
 # EGO 끄기
 agent ego off
@@ -135,6 +141,7 @@ agent ego status
 ```
 
 **`agent ego status` 출력 예시**
+
 ```
 === EGO Status ===
 
@@ -153,11 +160,13 @@ Daily cost cap: $5
 ```
 
 **`state` 값**
+
 - `off` — 버스 → Control Panel 직행 (EGO 미호출)
 - `passive` — EGO 판단 수행, 개입 없음 (관측용)
 - `active` — EGO 판단 + 개입 (운영 모드)
 
 **동작**
+
 1. 설정 파일 로드 (없으면 기본값으로 생성)
 2. 레거시 키 제거 (`enabled`, `mode`)
 3. `state` 필드 업데이트
@@ -171,16 +180,17 @@ schemaVersion=1.1.0, llm=null 이므로 깊은 경로를 사용하려면 LLM 필
 
 데몬 모드 게이트웨이 수명 제어. 기동 시 `<stateDir>/state/devices.json` 경로로 DeviceAuthStore 를 자동 초기화하므로 브라우저 대시보드가 곧바로 device-identity enrollment 가능.
 
-| 서브커맨드 | 설명 | 주요 옵션 |
-|-----------|------|----------|
-| `start` | 포그라운드 기동 (또는 `--detach` 로 데몬화) | `--port <n>`(기본 18790), `--host <h>`(기본 127.0.0.1), `--auth-token <t>`(기본 `dev-token`), `--detach` |
-| `stop` | 데몬 종료 (pidfile 기반) | — |
-| `status` | pid/port/uptime 요약 | — |
-| `health` | `gateway.health` RPC 호출 후 결과 표시 | `--timeout <ms>` |
-| `logs` | `<stateDir>/logs/gateway.{log,err.log}` tail | `-f, --follow`, `-n <lines>` |
-| `install` / `uninstall` / `restart` | OS 서비스(launchd / systemd-user / schtasks) 통합 | 플랫폼별 |
+| 서브커맨드                          | 설명                                              | 주요 옵션                                                                                                                                                                                                         |
+| ----------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start`                             | 포그라운드 기동 (또는 `--detach` 로 데몬화)       | `-p, --port <n>`(기본 18790), `-H, --host <h>`(기본 127.0.0.1), `--auth-token <t>`, `--detach`, `--foreground`, `--webapp-dir <p>`(기본: `packages/webapp/dist` 자동 탐지 또는 `AGENT_WEBAPP_DIR`), `--no-webapp` |
+| `stop`                              | 데몬 종료 (pidfile 기반 graceful)                 | `-H, --host`, `-p, --port`, `--auth-token`                                                                                                                                                                        |
+| `status`                            | pid/port/uptime 요약                              | `-H, --host`, `-p, --port`, `--auth-token`                                                                                                                                                                        |
+| `health`                            | `gateway.health` RPC 호출 후 결과 표시            | `-H, --host`, `-p, --port`, `--auth-token`                                                                                                                                                                        |
+| `logs`                              | `<stateDir>/logs/gateway.{log,err.log}` tail      | `--stderr`, `-n, --lines <n>`(기본 50)                                                                                                                                                                            |
+| `install` / `uninstall` / `restart` | OS 서비스(launchd / systemd-user / schtasks) 통합 | `--label <n>`, `-p, --port`, `--auth-token`, `--start`                                                                                                                                                            |
 
 **기동 예시**
+
 ```bash
 # 개발 — 포그라운드, 기본 토큰
 pnpm --filter @agent-platform/cli dev -- gateway start
@@ -192,6 +202,7 @@ pnpm --filter @agent-platform/cli dev -- gateway start \
 ```
 
 게이트웨이가 기동되면 두 RPC 소비자가 연결 가능:
+
 - **TUI**: `agent tui` (Ink 기반)
 - **Webapp**: `pnpm --filter @agent-platform/webapp dev` 로 Vite 기동 후 `http://localhost:5173/` 접속 (device-identity enrollment 필요)
 
@@ -199,16 +210,76 @@ pnpm --filter @agent-platform/cli dev -- gateway start \
 
 Ink 기반 터미널 대시보드. 게이트웨이 `/rpc` 에 WebSocket 접속 + 마스터 Bearer 인증.
 
-| 옵션 | 기본값 | 설명 |
-|------|--------|------|
-| `-h, --host <h>` | `127.0.0.1` | 게이트웨이 호스트 |
-| `-p, --port <n>` | (portfile 자동 해석) | 게이트웨이 포트 |
-| `--auth-token <t>` | `AGENT_GATEWAY_TOKEN` env | Bearer 토큰 |
-| `-s, --session <id>` | — | 기존 세션 재개 (히스토리 40건 로드) |
+| 옵션                      | 기본값                              | 설명                                        |
+| ------------------------- | ----------------------------------- | ------------------------------------------- |
+| `-H, --host <h>`          | `127.0.0.1`                         | 게이트웨이 호스트                           |
+| `-p, --port <n>`          | `AGENT_GATEWAY_PORT` env / portfile | 게이트웨이 포트                             |
+| `--auth-token <t>`        | `AGENT_GATEWAY_TOKEN` env           | Bearer 토큰                                 |
+| `-s, --session <id>`      | —                                   | 기존 세션 재개 (히스토리 40건 로드)         |
+| `-c, --conversation <id>` | —                                   | conversation id (재시작 너머로 안정적인 키) |
 
 ### `agent trace <sub>`
 
-[디버깅 · trace 조회](../../README.md#디버깅--trace-조회) 섹션 참조. `trace list / show / last / export` 4개 서브커맨드.
+게이트웨이가 `<stateDir>/trace/traces.db` 에 적재한 턴별 디버그 trace 를 조회. 블록 prefix 는 `T*` TUI / `G*` Gateway / `C*` Control / `P*` Platform / `E*` EGO / `W*` AgentRunner / `R*` Reasoner / `M*` Model / `S*` Sandbox / `K*` Tool/Skill / `X*` 메모리·감사·메트릭.
+
+#### `agent trace list`
+
+최근 trace 를 새 것부터 나열.
+
+| 옵션                 | 기본값 | 설명            |
+| -------------------- | ------ | --------------- |
+| `-s, --session <id>` | —      | 세션 id 필터    |
+| `-n, --limit <n>`    | `20`   | 최대 출력 행 수 |
+
+```
+startedAt            traceId         session             ms       egoAction         preview
+2026-05-06 03:12:08  trc-7f2c…       sess-abc            1842     enrich            "오늘 회의…"
+```
+
+#### `agent trace show <traceId>`
+
+블록-단위 타임라인 출력.
+
+| 옵션               | 기본값     | 설명                                         |
+| ------------------ | ---------- | -------------------------------------------- |
+| `--format <fmt>`   | `text`     | `text` 또는 `json`                           |
+| `--wall-clock`     | off        | 오프셋 대신 절대 wall-clock (`HH:mm:ss.SSS`) |
+| `--verbose`        | off        | 각 이벤트 아래에 raw payload JSON 펼침       |
+| `--filter <block>` | —          | 특정 블록만 출력 (예: `M1`, `X1`, `R3`)      |
+| `--no-color`       | (TTY 자동) | ANSI 색상 비활성                             |
+
+#### `agent trace last`
+
+가장 최근 trace 를 자동 해석해 `trace show` 와 동일한 출력. `--session` 으로 세션 한정 가능. 옵션은 `show` 와 동일.
+
+#### `agent trace export <traceId>`
+
+JSON 또는 NDJSON 으로 stdout 덤프 (이슈 첨부·외부 분석용).
+
+| 옵션             | 기본값 | 설명                                      |
+| ---------------- | ------ | ----------------------------------------- |
+| `--format <fmt>` | `json` | `json` (배열 wrap) 또는 `ndjson` (라인별) |
+
+### `agent device <sub>`
+
+브라우저 dashboard 의 device-identity enrollment 상태 관리 (ADR-010). DeviceAuthStore 가 `<stateDir>/state/devices.json` (mode 0o600) 에 ed25519 공개키·HMAC 시드를 저장한다.
+
+#### `agent device list`
+
+등록된 디바이스 표 출력.
+
+| 옵션     | 기본값 | 설명             |
+| -------- | ------ | ---------------- |
+| `--json` | off    | 표 대신 raw JSON |
+
+```
+deviceId                                name                      enrolledAt           lastSeenAt
+8b3a9c12-7f2e-4a3d-9c4a-f1e2d3a4b5c6   inki-laptop-chrome        2026-05-01 09:14:22  2026-05-06 03:08:55
+```
+
+#### `agent device revoke <deviceId>`
+
+지정 디바이스 등록 해제. 해당 디바이스의 활성 HMAC 세션 토큰이 즉시 무효화된다 (재등록 필요).
 
 ## 환경 변수
 
@@ -226,25 +297,28 @@ ANTHROPIC_API_KEY=sk-ant-... agent send "hi"
 npx dotenv-cli -- agent send "hi"
 ```
 
-| 변수 | 필수 | 용도 |
-|------|------|------|
-| `ANTHROPIC_API_KEY` | ✅ (LLM 호출 시) | Claude API 키 |
-| `AGENT_MODEL` | — | 기본 에이전트 모델 (기본: `claude-sonnet-4-20250514`) |
-| `OPENAI_API_KEY` | — | 엠베더·폴백 |
-| `AGENT_GATEWAY_TOKEN` | — | `gateway start` 의 마스터 Bearer 토큰 (CLI 인자 미지정 시 사용, 기본 `dev-token`) |
-| `AGENT_GATEWAY_PORT` | — | `gateway start` 포트 (기본 18790) |
-| `AGENT_GATEWAY_HOST` | — | `gateway start` 바인딩 호스트 (기본 127.0.0.1) |
-| `AGENT_STATE_DIR` | — | 상태 루트 (기본 `~/.agent`). `state/sessions.db`, `state/devices.json`, `trace/traces.db`, `logs/`, `run/` 모두 여기 하위 |
-| `AGENT_GATEWAY_ORIGIN` | — | `pnpm --filter @agent-platform/webapp dev` 가 프록시할 게이트웨이 origin (기본 `http://127.0.0.1:18790`) |
-| `AGENT_TRACE` | — | `0` 설정 시 trace 기록 비활성화 |
-| `AGENT_TRACE_RETENTION_DAYS` | — | trace row 보관 일수 (기본 14) |
+| 변수                         | 필수             | 용도                                                                                                                                    |
+| ---------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`          | ✅ (LLM 호출 시) | Claude API 키                                                                                                                           |
+| `AGENT_MODEL`                | —                | 기본 에이전트 모델 (기본: `claude-sonnet-4-20250514`). `claude-` 로 시작하지 않으면 자동으로 OpenAI 어댑터 선택                         |
+| `AGENT_PROVIDER`             | —                | 모델 어댑터를 명시적으로 선택 (`anthropic` \| `openai`). `AGENT_MODEL` 휴리스틱을 덮어씀                                                |
+| `OPENAI_API_KEY`             | —                | 엠베더·폴백·OpenAI 어댑터                                                                                                               |
+| `AGENT_GATEWAY_TOKEN`        | —                | `gateway start` 의 마스터 Bearer 토큰 (CLI 인자 미지정 시 사용, 기본 `dev-token`)                                                       |
+| `AGENT_GATEWAY_PORT`         | —                | `gateway start` 포트 (기본 18790)                                                                                                       |
+| `AGENT_GATEWAY_HOST`         | —                | `gateway start` 바인딩 호스트 (기본 127.0.0.1)                                                                                          |
+| `AGENT_STATE_DIR`            | —                | 상태 루트 (기본 `~/.agent`). `state/sessions.db`, `state/devices.json`, `trace/traces.db`, `logs/`, `run/` 모두 여기 하위               |
+| `AGENT_WEBAPP_DIR`           | —                | 빌드된 webapp SPA 디렉토리 (`gateway start` 가 `/ui/*` 로 서빙). `--webapp-dir` CLI 인자 또는 `packages/webapp/dist` 자동 탐지에 우선함 |
+| `AGENT_GATEWAY_ORIGIN`       | —                | `pnpm --filter @agent-platform/webapp dev` 가 프록시할 게이트웨이 origin (기본 `http://127.0.0.1:18790`)                                |
+| `AGENT_TRACE`                | —                | `0` 설정 시 trace 기록 비활성화                                                                                                         |
+| `AGENT_TRACE_RETENTION_DAYS` | —                | trace row 보관 일수 (기본 14)                                                                                                           |
+| `AGENT_MEMORY_ACCESS_LOG`    | —                | `PalaceMemorySystem.search()` 의 access logging. **default ON** — `0`/`false`/`off`/`no` 설정 시 비활성 (rank perturb 회피용)           |
 
 ## 종료 코드
 
-| 코드 | 의미 |
-|------|------|
-| `0` | 정상 종료 |
-| `1` | 일반 오류 (잘못된 옵션, 세션 DB 접근 실패 등) |
+| 코드 | 의미                                          |
+| ---- | --------------------------------------------- |
+| `0`  | 정상 종료                                     |
+| `1`  | 일반 오류 (잘못된 옵션, 세션 DB 접근 실패 등) |
 
 ## 알려진 제약
 

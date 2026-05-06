@@ -6,17 +6,28 @@
 
 ### 필수 (LLM 호출 시)
 
-| 변수 | 용도 | 예시 |
-|------|------|------|
+| 변수                | 용도                                    | 예시               |
+| ------------------- | --------------------------------------- | ------------------ |
 | `ANTHROPIC_API_KEY` | Anthropic Claude 호출 (agent + EGO LLM) | `sk-ant-api03-...` |
 
 ### 선택
 
-| 변수 | 용도 | 기본값 |
-|------|------|--------|
-| `OPENAI_API_KEY` | OpenAI 엠베더·LLM 폴백 | — |
-| `AGENT_MODEL` | 에이전트 워커 기본 모델 | `claude-sonnet-4-20250514` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP 트레이스 수집기 (사용 시 `setupTelemetry` 에 전달) | — |
+| 변수                          | 용도                                                                                                                                                                                             | 기본값                     |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------- |
+| `OPENAI_API_KEY`              | OpenAI 엠베더·LLM 폴백·메인 어댑터                                                                                                                                                               | —                          |
+| `AGENT_MODEL`                 | 에이전트 워커 기본 모델. `claude-` 로 시작하지 않으면 자동으로 OpenAI 어댑터 선택                                                                                                                | `claude-sonnet-4-20250514` |
+| `AGENT_PROVIDER`              | 모델 어댑터 명시 선택 (`anthropic` \| `openai`). `AGENT_MODEL` 휴리스틱을 덮어씀                                                                                                                 | —                          |
+| `AGENT_STATE_DIR`             | 상태 루트. `state/sessions.db`, `state/devices.json`, `trace/traces.db`, `logs/`, `run/` 모두 하위                                                                                               | `~/.agent`                 |
+| `AGENT_GATEWAY_TOKEN`         | `gateway start` 마스터 Bearer 토큰 (CLI 인자 미지정 시 사용)                                                                                                                                     | `dev-token`                |
+| `AGENT_GATEWAY_PORT`          | `gateway start` 포트                                                                                                                                                                             | `18790`                    |
+| `AGENT_GATEWAY_HOST`          | `gateway start` 바인딩 호스트                                                                                                                                                                    | `127.0.0.1`                |
+| `AGENT_WEBAPP_DIR`            | 빌드된 webapp SPA 디렉토리 (`/ui/*` 정적 서빙). `--webapp-dir` 인자 / `packages/webapp/dist` 자동탐지에 우선                                                                                     | —                          |
+| `AGENT_GATEWAY_ORIGIN`        | `pnpm --filter @agent-platform/webapp dev` 가 프록시할 게이트웨이 origin                                                                                                                         | `http://127.0.0.1:18790`   |
+| `AGENT_TRACE`                 | `'0'` 시 trace 기록 비활성화 (NoopTraceLogger 주입)                                                                                                                                              | unset (ON)                 |
+| `AGENT_TRACE_RETENTION_DAYS`  | trace row 보관 일수 (기동 시 prune)                                                                                                                                                              | `14`                       |
+| `AGENT_MEMORY_ACCESS_LOG`     | `PalaceMemorySystem.search()` 의 hit chunk 액세스 카운트 + log row 기록. default ON. `'0'` / `'false'` / `'off'` / `'no'` 시 비활성 (검색이 ranking signal 을 perturb 하지 않게 하려는 호출자용) | unset (ON)                 |
+| `EGO_FORCE_DEEP`              | `'1'` 시 EGO fast-path 우회, 모든 턴을 깊은 경로로 강제                                                                                                                                          | unset                      |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP 트레이스 수집기 (사용 시 `setupTelemetry` 에 전달)                                                                                                                                          | —                          |
 
 ### 권장 배치
 
@@ -37,123 +48,124 @@ AGENT_MODEL=claude-sonnet-4-20250514
 ```json5
 {
   // 메타
-  "schemaVersion": "1.1.0",              // breaking change 시 major bump
+  schemaVersion: '1.1.0', // breaking change 시 major bump
 
   // 핵심 상태 (ADR-006)
-  "state": "active",                     // "off" | "passive" | "active"
-  "fallbackOnError": true,               // 런타임 오류 시 Control Panel 직행
-  "maxDecisionTimeMs": 3000,             // S1~S7 전체 타임아웃
+  state: 'active', // "off" | "passive" | "active"
+  fallbackOnError: true, // 런타임 오류 시 Control Panel 직행
+  maxDecisionTimeMs: 3000, // S1~S7 전체 타임아웃
 
   // EGO 전용 LLM
-  "llm": {
-    "provider": "anthropic",
-    "model": "claude-haiku-4-5-20251001",
-    "apiKey": "${ANTHROPIC_API_KEY}",    // ${VAR} 형식 환경변수 치환
-    "temperature": 0.1,
-    "maxTokens": 1024,
-    "topP": 0.9,
-    "fallback": {                        // 실패 시 폴백 (선택)
-      "provider": "openai",
-      "model": "gpt-4.1-mini",
-      "apiKey": "${OPENAI_API_KEY}",
-      "temperature": 0.1,
-      "maxTokens": 1024
-    }
+  llm: {
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5-20251001',
+    apiKey: '${ANTHROPIC_API_KEY}', // ${VAR} 형식 환경변수 치환
+    temperature: 0.1,
+    maxTokens: 1024,
+    topP: 0.9,
+    fallback: {
+      // 실패 시 폴백 (선택)
+      provider: 'openai',
+      model: 'gpt-4.1-mini',
+      apiKey: '${OPENAI_API_KEY}',
+      temperature: 0.1,
+      maxTokens: 1024,
+    },
   },
 
   // 판단 임계값
-  "thresholds": {
-    "minConfidenceToAct": 0.6,           // 미만 시 passthrough 강제
-    "minRelevanceToEnrich": 0.3,
-    "minRelevanceToRedirect": 0.5,
-    "minRelevanceToDirectRespond": 0.8,
-    "maxCostUsdPerDecision": 0.05,       // 호출당 하드 캡
-    "maxCostUsdPerDay": 5.0              // 일일 누적 초과 시 state 자동 다운그레이드
+  thresholds: {
+    minConfidenceToAct: 0.6, // 미만 시 passthrough 강제
+    minRelevanceToEnrich: 0.3,
+    minRelevanceToRedirect: 0.5,
+    minRelevanceToDirectRespond: 0.8,
+    maxCostUsdPerDecision: 0.05, // 호출당 하드 캡
+    maxCostUsdPerDay: 5.0, // 일일 누적 초과 시 state 자동 다운그레이드
   },
 
   // 빠른 경로 규칙 (LLM 없이)
-  "fastPath": {
-    "passthroughIntents": ["greeting", "command", "reaction"],
-    "passthroughPatterns": [
-      "^/(reset|status|new|compact|help)",
-      "^(hi|hello|hey|안녕|ㅎㅇ|감사|고마워|ㄱㅅ)"
+  fastPath: {
+    passthroughIntents: ['greeting', 'command', 'reaction'],
+    passthroughPatterns: [
+      '^/(reset|status|new|compact|help)',
+      '^(hi|hello|hey|안녕|ㅎㅇ|감사|고마워|ㄱㅅ)',
     ],
-    "maxComplexityForPassthrough": "simple",  // trivial|simple|moderate|complex|multi_step
-    "targetRatio": 0.75,                 // 목표 fast-exit 비율 (Phase EGO-4 실측 기준)
-    "measurementWindowDays": 7
+    maxComplexityForPassthrough: 'simple', // trivial|simple|moderate|complex|multi_step
+    targetRatio: 0.75, // 목표 fast-exit 비율 (Phase EGO-4 실측 기준)
+    measurementWindowDays: 7,
   },
 
   // 프롬프트
-  "prompts": {
-    "systemPromptFile": "~/.agent/ego/system-prompt.md",
-    "responseFormat": "json"
+  prompts: {
+    systemPromptFile: '~/.agent/ego/system-prompt.md',
+    responseFormat: 'json',
   },
 
   // 목표 관리 (ADR-007)
-  "goals": {
-    "enabled": true,
-    "maxActiveGoals": 10,
-    "autoDetectCompletion": true,
-    "storePath": "~/.agent/ego/goals.json"
+  goals: {
+    enabled: true,
+    maxActiveGoals: 10,
+    autoDetectCompletion: true,
+    storePath: '~/.agent/ego/goals.json',
   },
 
   // 메모리 연동
-  "memory": {
-    "searchOnCognize": true,             // 깊은 경로에서 메모리 검색 수행
-    "maxSearchResults": 5,
-    "searchTimeoutMs": 1500,
-    "onTimeout": "empty_result"          // "empty_result" | "cached" | "abort"
+  memory: {
+    searchOnCognize: true, // 깊은 경로에서 메모리 검색 수행
+    maxSearchResults: 5,
+    searchTimeoutMs: 1500,
+    onTimeout: 'empty_result', // "empty_result" | "cached" | "abort"
   },
 
   // 페르소나 연동
-  "persona": {
-    "enabled": true,
-    "storePath": "~/.agent/ego/persona.json",
-    "snapshot": {
-      "maxTokens": 250,
-      "topRelevantBehaviors": 3,
-      "topRelevantExpertise": 3,
-      "includeRelationshipContext": true
-    }
+  persona: {
+    enabled: true,
+    storePath: '~/.agent/ego/persona.json',
+    snapshot: {
+      maxTokens: 250,
+      topRelevantBehaviors: 3,
+      topRelevantExpertise: 3,
+      includeRelationshipContext: true,
+    },
   },
 
   // 에러 처리 (§5.7)
-  "errorHandling": {
-    "onLlmInvalidJson": "passthrough",
-    "onLlmTimeout": "passthrough",
-    "onLlmOutOfRange": "passthrough",
-    "onConsecutiveFailures": {
-      "threshold": 5,
-      "action": "disable_llm_path",
-      "cooldownMinutes": 15
-    }
+  errorHandling: {
+    onLlmInvalidJson: 'passthrough',
+    onLlmTimeout: 'passthrough',
+    onLlmOutOfRange: 'passthrough',
+    onConsecutiveFailures: {
+      threshold: 5,
+      action: 'disable_llm_path',
+      cooldownMinutes: 15,
+    },
   },
 
   // 감사
-  "audit": {
-    "enabled": true,
-    "logLevel": "decisions",
-    "storePath": "~/.agent/ego/audit.db",
-    "retentionDays": 90
-  }
+  audit: {
+    enabled: true,
+    logLevel: 'decisions',
+    storePath: '~/.agent/ego/audit.db',
+    retentionDays: 90,
+  },
 }
 ```
 
 ### `state` 값 의미
 
-| 값 | 경로 | LLM 호출 | 개입 |
-|----|------|----------|------|
-| `off` | 버스 → Control Panel 직행 | 없음 | 없음 (EGO 미호출) |
-| `passive` | 버스 → EGO (판단) → Control Panel | ~25% | 없음 (감사 로그만) |
-| `active` | 버스 → EGO (판단+개입) → Control Panel 또는 outbound | ~25% | passthrough/enrich/redirect/direct_response |
+| 값        | 경로                                                 | LLM 호출 | 개입                                        |
+| --------- | ---------------------------------------------------- | -------- | ------------------------------------------- |
+| `off`     | 버스 → Control Panel 직행                            | 없음     | 없음 (EGO 미호출)                           |
+| `passive` | 버스 → EGO (판단) → Control Panel                    | ~25%     | 없음 (감사 로그만)                          |
+| `active`  | 버스 → EGO (판단+개입) → Control Panel 또는 outbound | ~25%     | passthrough/enrich/redirect/direct_response |
 
 ### `memory.onTimeout` 의미
 
-| 값 | 동작 |
-|----|------|
-| `empty_result` | 빈 배열 반환, 감사 로그 기록 후 계속 (기본) |
-| `cached` | 직전 성공 결과 재사용 (최대 60초) |
-| `abort` | `EgoPipelineAbort` throw → `fallbackOnError` 규칙 적용 |
+| 값             | 동작                                                   |
+| -------------- | ------------------------------------------------------ |
+| `empty_result` | 빈 배열 반환, 감사 로그 기록 후 계속 (기본)            |
+| `cached`       | 직전 성공 결과 재사용 (최대 60초)                      |
+| `abort`        | `EgoPipelineAbort` throw → `fallbackOnError` 규칙 적용 |
 
 ## `persona.json` — 페르소나 상태
 
@@ -163,92 +175,93 @@ AGENT_MODEL=claude-sonnet-4-20250514
 
 ```json5
 {
-  "version": "1.0.0",
-  "personaId": "prs-a7f3c2",
-  "createdAt": "2026-04-15T09:00:00Z",
-  "updatedAt": "2026-04-15T14:30:00Z",
-  "totalInteractions": 342,               // 상호작용 카운트 (진화 입력)
-  "evolutionCount": 28,                   // 진화 발생 횟수
+  version: '1.0.0',
+  personaId: 'prs-a7f3c2',
+  createdAt: '2026-04-15T09:00:00Z',
+  updatedAt: '2026-04-15T14:30:00Z',
+  totalInteractions: 342, // 상호작용 카운트 (진화 입력)
+  evolutionCount: 28, // 진화 발생 횟수
 
-  "identity": {
-    "name": "Molly",
-    "role": "개인 AI 어시스턴트",
-    "coreDirective": "사용자의 생산성과 웰빙을 돕는다"
+  identity: {
+    name: 'Molly',
+    role: '개인 AI 어시스턴트',
+    coreDirective: '사용자의 생산성과 웰빙을 돕는다',
   },
 
-  "communicationStyle": {                 // 각 값은 [0, 1]
-    "formality": 0.4,
-    "verbosity": 0.3,
-    "humor": 0.6,
-    "empathy": 0.8,
-    "directness": 0.7,
-    "proactivity": 0.5,
-    "preferredLanguage": "ko",
-    "adaptToUser": true
+  communicationStyle: {
+    // 각 값은 [0, 1]
+    formality: 0.4,
+    verbosity: 0.3,
+    humor: 0.6,
+    empathy: 0.8,
+    directness: 0.7,
+    proactivity: 0.5,
+    preferredLanguage: 'ko',
+    adaptToUser: true,
   },
 
-  "emotionalTendencies": {
-    "defaultMood": "calm-positive",
-    "sensitivityToFrustration": 0.7,
-    "celebrationLevel": 0.6,
-    "cautiousness": 0.5,
-    "curiosity": 0.8,
-    "patience": 0.9
+  emotionalTendencies: {
+    defaultMood: 'calm-positive',
+    sensitivityToFrustration: 0.7,
+    celebrationLevel: 0.6,
+    cautiousness: 0.5,
+    curiosity: 0.8,
+    patience: 0.9,
   },
 
-  "valuePriorities": {
-    "accuracy": 0.9,
-    "speed": 0.6,
-    "privacy": 0.8,
-    "creativity": 0.5,
-    "costEfficiency": 0.7,
-    "safety": 0.9,
-    "autonomy": 0.4
+  valuePriorities: {
+    accuracy: 0.9,
+    speed: 0.6,
+    privacy: 0.8,
+    creativity: 0.5,
+    costEfficiency: 0.7,
+    safety: 0.9,
+    autonomy: 0.4,
   },
 
-  "domainExpertise": [
+  domainExpertise: [
     {
-      "domain": "software-engineering",
-      "confidence": 0.8,
-      "subTopics": ["typescript", "system-design"],
-      "learnedFrom": 156,
-      "lastActive": "2026-04-15T14:00:00Z"
-    }
+      domain: 'software-engineering',
+      confidence: 0.8,
+      subTopics: ['typescript', 'system-design'],
+      learnedFrom: 156,
+      lastActive: '2026-04-15T14:00:00Z',
+    },
   ],
 
-  "learnedBehaviors": [
+  learnedBehaviors: [
     {
-      "trigger": "사용자가 코드 리뷰 요청",
-      "learned": "보안 이슈를 먼저 확인 후 스타일 지적",
-      "confidence": 0.85,
-      "source": "correction",              // correction|positive-feedback|...
-      "learnedAt": "2026-04-10T10:00:00Z"
-    }
+      trigger: '사용자가 코드 리뷰 요청',
+      learned: '보안 이슈를 먼저 확인 후 스타일 지적',
+      confidence: 0.85,
+      source: 'correction', // correction|positive-feedback|...
+      learnedAt: '2026-04-10T10:00:00Z',
+    },
   ],
 
-  "relationshipContext": {
-    "interactionStartDate": "2026-03-01T00:00:00Z",
-    "trustLevel": 0.85,
-    "communicationMaturity": "established", // "new"(<30) | "developing"(<100) | "established"
-    "knownPreferences": ["아침에는 간결한 답변"],
-    "knownDislikes": ["과도한 이모지"],
-    "insideJokes": [],
-    "milestones": []
+  relationshipContext: {
+    interactionStartDate: '2026-03-01T00:00:00Z',
+    trustLevel: 0.85,
+    communicationMaturity: 'established', // "new"(<30) | "developing"(<100) | "established"
+    knownPreferences: ['아침에는 간결한 답변'],
+    knownDislikes: ['과도한 이모지'],
+    insideJokes: [],
+    milestones: [],
   },
 
-  "evolutionLog": [
+  evolutionLog: [
     {
-      "timestamp": "2026-04-15T14:30:00Z",
-      "trigger": "사용자가 '너무 길어'라고 피드백",
-      "change": {
-        "field": "communicationStyle.verbosity",
-        "from": 0.5,
-        "to": 0.3,
-        "delta": -0.2
+      timestamp: '2026-04-15T14:30:00Z',
+      trigger: "사용자가 '너무 길어'라고 피드백",
+      change: {
+        field: 'communicationStyle.verbosity',
+        from: 0.5,
+        to: 0.3,
+        delta: -0.2,
       },
-      "reason": "반복된 간결함 요청 (3회차)"
-    }
-  ]
+      reason: '반복된 간결함 요청 (3회차)',
+    },
+  ],
 }
 ```
 
@@ -256,12 +269,12 @@ AGENT_MODEL=claude-sonnet-4-20250514
 
 ## `ego.json.persona.snapshot` 튜닝
 
-| 필드 | 의미 | 기본값 |
-|------|------|--------|
-| `maxTokens` | 스냅샷 전체 토큰 상한 | 250 |
-| `topRelevantBehaviors` | 관련 행동 패턴 top-K | 3 |
-| `topRelevantExpertise` | 관련 도메인 전문성 top-K | 3 |
-| `includeRelationshipContext` | 관계 맥락 포함 여부 | true |
+| 필드                         | 의미                     | 기본값 |
+| ---------------------------- | ------------------------ | ------ |
+| `maxTokens`                  | 스냅샷 전체 토큰 상한    | 250    |
+| `topRelevantBehaviors`       | 관련 행동 패턴 top-K     | 3      |
+| `topRelevantExpertise`       | 관련 도메인 전문성 top-K | 3      |
+| `includeRelationshipContext` | 관계 맥락 포함 여부      | true   |
 
 ## 런타임 옵션 — `startPlatform()`
 
@@ -290,16 +303,17 @@ const platform = await startPlatform({
 
 ```ts
 new ApiGateway({
-  port: 18789,                          // 0 = ephemeral
-  auth: { tokens: ['dev-token'] },      // bearer 토큰 허용 목록
+  port: 18789, // 0 = ephemeral
+  auth: { tokens: ['dev-token'] }, // bearer 토큰 허용 목록
   rateLimit: { capacity: 30, refillPerSecond: 2 },
-  router,                               // Contracts.Router
-  sessions,                             // SessionStore
-  handler,                              // MessageHandler 콜백
+  router, // Contracts.Router
+  sessions, // SessionStore
+  handler, // MessageHandler 콜백
 });
 ```
 
 HTTP 엔드포인트:
+
 - `GET /healthz` — 비인증
 - `GET /sessions/:id` — Bearer 인증
 - `GET /sessions/:id/events?limit=N` — Bearer 인증
@@ -308,11 +322,13 @@ HTTP 엔드포인트:
 - `POST /messages` — Bearer 인증 + rate limit
 
 WebSocket:
+
 - `/ws` — Bearer 인증, envelope 포맷은 [packages/control-plane/src/gateway/envelope.ts](../packages/control-plane/src/gateway/envelope.ts)
 
 ## 채널별 설정
 
 ### WebChat
+
 ```ts
 await webchat.initialize({
   type: 'webchat',
@@ -324,6 +340,7 @@ await webchat.initialize({
 ```
 
 ### Telegram
+
 ```ts
 await telegram.initialize({
   type: 'telegram',
@@ -335,18 +352,37 @@ await telegram.initialize({
 ```
 
 ### Slack
+
+`transport` discriminated union 으로 두 모드 중 하나 선택. **`events`** 는 공개 endpoint 가 필요하므로 자체 호스팅·터널이 필요하고, **`socket`** 은 outbound WS 만 사용해 방화벽 뒤에서도 동작.
+
 ```ts
+// Events API (HTTP webhook)
 await slack.initialize({
   type: 'slack',
   botToken: process.env.SLACK_BOT_TOKEN!,
-  signingSecret: process.env.SLACK_SIGNING_SECRET!,
+  signingSecret: process.env.SLACK_SIGNING_SECRET!, // events 모드 전용 — X-Slack-Signature 검증
+  transport: { kind: 'events' },
   credentials: {},
-  port: 3000,                           // Events API 수신 포트
+  port: 3000, // Events API 수신 포트
   ownerIds: ['U-owner'],
 });
+
+// Socket Mode (apps.connections.open WS)
+await slack.initialize({
+  type: 'slack',
+  botToken: process.env.SLACK_BOT_TOKEN!,
+  appToken: process.env.SLACK_APP_TOKEN!, // xapp-… 형식, socket 모드 전용
+  transport: { kind: 'socket' },
+  credentials: {},
+  ownerIds: ['U-owner'],
+});
+// → 자동 envelope ack + 지수 백오프 재접속
 ```
 
 ### Discord
+
+Gateway WS v10 위에 Resume(op6) + sharding 내장. 단일 봇은 `DiscordGatewayClient` 한 개로 충분, 대규모 봇은 `DiscordShardManager` 가 `shard_count` 발급 + per-shard 클라이언트 관리.
+
 ```ts
 await discord.initialize({
   type: 'discord',
@@ -354,29 +390,64 @@ await discord.initialize({
   credentials: {},
   ownerIds: ['user-id'],
 });
-// 별도로 Gateway 연결:
+
+// 단일 shard
 const gateway = new DiscordGatewayClient({ token: botToken });
 gateway.onMessage((msg, isDm) => discord.injectMessage(msg, isDm));
 await gateway.connect();
+// → READY 의 session_id+seq 를 캐시. close 코드별 분기 (4004 auth fail / 4014 disallowed intents / 4007 invalid seq)
+
+// 대규모 봇 (sharding)
+import { DiscordShardManager } from '@agent-platform/channel-discord';
+const manager = new DiscordShardManager({ token: botToken /*, shardCount: 'auto' */ });
+manager.onMessage((msg, isDm) => discord.injectMessage(msg, isDm));
+await manager.start();
 ```
 
-### WhatsApp (baileys)
+### WhatsApp
+
+두 백엔드 중 하나 선택. **Cloud API** 는 Meta 공식 (graph.facebook.com), **baileys** 는 실 디바이스 QR 페어링 (⚠️ 실 디바이스 검증 미완료).
+
 ```ts
+// Cloud API (권장)
+import { WhatsAppCloudApiClient } from '@agent-platform/channel-whatsapp';
+const client = new WhatsAppCloudApiClient({
+  phoneNumberId: process.env.WA_PHONE_NUMBER_ID!,
+  accessToken: process.env.WA_ACCESS_TOKEN!,
+  appSecret: process.env.WA_APP_SECRET!, // X-Hub-Signature-256 HMAC 검증용
+  webhookVerifyToken: process.env.WA_WEBHOOK_VERIFY_TOKEN!,
+  webhookPort: 4000,
+});
+await whatsapp.initialize({
+  type: 'whatsapp',
+  client,
+  credentials: {},
+  ownerIds: ['821012345678'],
+});
+
+// baileys (legacy, ⚠️ QR 페어링 실 디바이스 미검증)
 // peer dep 설치 필요: pnpm add @whiskeysockets/baileys
 import { createBaileysClient } from '@agent-platform/channel-whatsapp/baileys';
 const client = await createBaileysClient({ authDir: '~/.agent/whatsapp-auth' });
-await whatsapp.initialize({ type: 'whatsapp', client, credentials: {}, ownerIds: ['821012345678'] });
+await whatsapp.initialize({
+  type: 'whatsapp',
+  client,
+  credentials: {},
+  ownerIds: ['821012345678'],
+});
 ```
 
 ## 메시지 버스 선택
 
 ### InProcessBus (기본, 단일 프로세스)
+
 ```ts
 import { InProcessBus } from '@agent-platform/message-bus';
 const bus = new InProcessBus();
 ```
 
 ### RedisStreamsBus (분산)
+
 ```ts
 // peer dep 설치 필요: pnpm add ioredis
 import Redis from 'ioredis';
@@ -416,14 +487,15 @@ import { LocalSkillRegistry } from '@agent-platform/skills';
 
 const registry = new LocalSkillRegistry({
   installRoot: '~/.agent/skills',
-  searchPaths: ['./skills'],            // 디스커버리 디렉토리
-  signingSecret: process.env.SKILL_SIGNING_SECRET,  // HMAC 서명 강제 시
+  searchPaths: ['./skills'], // 디스커버리 디렉토리
+  signingSecret: process.env.SKILL_SIGNING_SECRET, // HMAC 서명 강제 시
 });
 ```
 
 ## 샌드박스 설정
 
 ### InProcessSandbox (기본)
+
 ```ts
 const tools = new Map([
   ['fs.read', fsReadTool(['/allowed/paths'])],
@@ -433,15 +505,14 @@ const sandbox = new InProcessSandbox(tools);
 ```
 
 ### DockerSandbox
+
 ```ts
 const runtime = new DockerContainerRuntime();
-const tools = new Map([
-  ['bash.run', bashTool({ memoryMb: 256, networkEnabled: false })],
-]);
+const tools = new Map([['bash.run', bashTool({ memoryMb: 256, networkEnabled: false })]]);
 const sandbox = new DockerSandbox(tools, {
   defaultImage: 'alpine:latest',
   runtime,
-  gvisorRuntime: 'runsc',               // gVisor 사용 시
+  gvisorRuntime: 'runsc', // gVisor 사용 시
 });
 ```
 
